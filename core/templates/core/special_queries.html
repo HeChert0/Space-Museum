@@ -1,0 +1,195 @@
+<!-- core/templates/core/special_queries.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'home' %}" class="back-button">← Назад в меню</a>
+
+<h1 class="menu-title">СПЕЦИАЛЬНЫЕ SQL ЗАПРОСЫ</h1>
+
+<form method="post">
+    {% csrf_token %}
+
+    <!-- Выбор лабораторной работы -->
+    <div class="form-group">
+        <label>Выберите лабораторную работу:</label>
+        <select name="lab_type" id="lab_type" required onchange="updateQueryOptions()">
+            <option value="">-- Выберите --</option>
+            <option value="lab5">Лабораторная работа 5</option>
+            <option value="lab6">Лабораторная работа 6</option>
+        </select>
+    </div>
+
+    <!-- Выбор таблицы (только для лаб 5) -->
+    <div class="form-group" id="table_select" style="display: none;">
+        <label>Выберите таблицу:</label>
+        <select name="table_name" id="table_name" onchange="updateLab5Queries()">
+            <option value="">-- Выберите --</option>
+            <option value="employee">Employee (Сотрудники)</option>
+            <option value="excursion">Excursion (Экскурсии)</option>
+            <option value="exhibit">Exhibit (Экспонаты)</option>
+            <option value="space_mission">Space Mission (Космические миссии)</option>
+            <option value="exhibition">Exhibition (Выставки)</option>
+            <option value="visitor">Visitor (Посетители)</option>
+        </select>
+    </div>
+
+    <!-- Выбор запроса -->
+    <div class="form-group" id="query_select" style="display: none;">
+        <label>Выберите запрос:</label>
+        <select name="query_type" id="query_type">
+            <option value="">-- Выберите --</option>
+        </select>
+    </div>
+
+    <button type="submit" class="btn-submit" id="submit_btn" style="display: none;">Выполнить</button>
+</form>
+
+{% if query_result %}
+<div style="margin-top: 30px;">
+    <h2 style="color: #00ff00; margin-bottom: 20px;">Результат запроса:</h2>
+
+    <form method="post" style="margin-bottom: 10px;">
+        {% csrf_token %}
+        <input type="hidden" name="lab_type" value="{{ lab_type }}">
+        <input type="hidden" name="query_type" value="{{ selected_query }}">
+        <input type="hidden" name="save_result" value="true">
+        <button type="submit" class="btn-submit">💾 Сохранить результат запроса</button>
+    </form>
+
+    <div style="overflow-x: auto;">
+        <table>
+            <thead>
+                <tr>
+                    {% for key in columns %}
+                    <th>{{ key }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in query_result %}
+                <tr>
+                    {% for value in row %}
+                    <td>{{ value|default:"-" }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<script>
+const lab5Queries = {
+    'employee': [
+        {value: 'emp_1', text: 'Список ФИО и должностей (с псевдонимом)'},
+        {value: 'emp_2', text: 'Сотрудники с должностью "Экскурсовод"'},
+        {value: 'emp_3', text: 'Сотрудники отсортированные по дате найма'},
+        {value: 'emp_4', text: 'Сотрудники с фамилией на "П"'}
+    ],
+    'excursion': [
+        {value: 'exc_1', text: 'Названия и даты экскурсий (с псевдонимом)'},
+        {value: 'exc_2', text: 'Экскурсии отсортированные по продолжительности'},
+        {value: 'exc_3', text: 'Экскурсии с "Косм" в названии'},
+        {value: 'exc_4', text: 'Экскурсии с экскурсоводами (INNER JOIN)'},
+        {value: 'exc_5', text: 'Сотрудники и их экскурсии (LEFT JOIN)'},
+        {value: 'exc_6', text: 'Экскурсии и их сотрудники (RIGHT JOIN)'},
+        {value: 'exc_7', text: 'Все сотрудники и экскурсии (FULL JOIN)'}
+    ],
+    'exhibit': [
+        {value: 'exh_1', text: 'Названия и состояния экспонатов (с псевдонимом)'},
+        {value: 'exh_2', text: 'Экспонаты до 1970 года из СССР'},
+        {value: 'exh_3', text: 'Экспонаты отсортированные по дате создания'},
+        {value: 'exh_4', text: 'Экспонаты с "Макет" в названии'},
+        {value: 'exh_5', text: 'Экспонаты с миссиями (INNER JOIN)'},
+        {value: 'exh_6', text: 'Экспонаты и их миссии (LEFT JOIN)'},
+        {value: 'exh_7', text: 'Миссии и их экспонаты (RIGHT JOIN)'},
+        {value: 'exh_8', text: 'Все экспонаты и миссии (FULL JOIN)'}
+    ],
+    'space_mission': [
+        {value: 'sm_1', text: 'Названия и страны миссий (с псевдонимом)'},
+        {value: 'sm_2', text: 'Миссии между 1970 и 2000 годами'},
+        {value: 'sm_3', text: 'Миссии отсортированные по стране'},
+        {value: 'sm_4', text: 'Миссии с участием США'}
+    ],
+    'exhibition': [
+        {value: 'exb_1', text: 'Названия и темы выставок (с псевдонимом)'},
+        {value: 'exb_2', text: 'Завершенные временные выставки'},
+        {value: 'exb_3', text: 'Выставки отсортированные по дате окончания'},
+        {value: 'exb_4', text: 'Выставки в залах'},
+        {value: 'exb_5', text: 'Выставки и их сотрудники (INNER JOIN)'},
+        {value: 'exb_6', text: 'Выставки и ответственные (LEFT JOIN)'},
+        {value: 'exb_7', text: 'Сотрудники и их выставки (RIGHT JOIN)'},
+        {value: 'exb_8', text: 'Все сотрудники и выставки (FULL JOIN)'}
+    ],
+    'visitor': [
+        {value: 'vis_1', text: 'Тип билета, ФИО и гражданство (с псевдонимом)'},
+        {value: 'vis_2', text: 'Посетители с отзывами'},
+        {value: 'vis_3', text: 'Посетители отсортированные по дате рождения'},
+        {value: 'vis_4', text: 'Посетители с восклицательным знаком в отзыве'},
+        {value: 'vis_5', text: 'Экскурсии и их посетители (INNER JOIN)'},
+        {value: 'vis_6', text: 'Экскурсии и посетители (LEFT JOIN)'},
+        {value: 'vis_7', text: 'Посетители и их экскурсии (RIGHT JOIN)'},
+        {value: 'vis_8', text: 'Все экскурсии и посетители (FULL JOIN)'}
+    ]
+};
+
+const lab6Queries = [
+    {value: 'lab6_1', text: 'Запрос 1 для таблицы Employee'},
+    {value: 'lab6_2', text: 'Запрос 2 для таблицы Excursion'},
+    {value: 'lab6_3', text: 'Запрос 3 для таблицы Exhibit'},
+    {value: 'lab6_4', text: 'Запрос 4 для таблицы Space Mission'},
+    {value: 'lab6_5', text: 'Запрос 5 для таблицы Exhibition'},
+    {value: 'lab6_6', text: 'Запрос 6 для таблицы Visitor'}
+];
+
+function updateQueryOptions() {
+    const labType = document.getElementById('lab_type').value;
+    const tableSelect = document.getElementById('table_select');
+    const querySelect = document.getElementById('query_select');
+    const submitBtn = document.getElementById('submit_btn');
+    const queryTypeSelect = document.getElementById('query_type');
+
+    if (labType === 'lab5') {
+        tableSelect.style.display = 'block';
+        querySelect.style.display = 'none';
+        submitBtn.style.display = 'none';
+        document.getElementById('table_name').value = '';
+        queryTypeSelect.innerHTML = '<option value="">-- Выберите --</option>';
+    } else if (labType === 'lab6') {
+        tableSelect.style.display = 'none';
+        querySelect.style.display = 'block';
+        submitBtn.style.display = 'block';
+
+        queryTypeSelect.innerHTML = '<option value="">-- Выберите --</option>';
+        lab6Queries.forEach(query => {
+            queryTypeSelect.innerHTML += `<option value="${query.value}">${query.text}</option>`;
+        });
+    } else {
+        tableSelect.style.display = 'none';
+        querySelect.style.display = 'none';
+        submitBtn.style.display = 'none';
+    }
+}
+
+function updateLab5Queries() {
+    const tableName = document.getElementById('table_name').value;
+    const querySelect = document.getElementById('query_select');
+    const submitBtn = document.getElementById('submit_btn');
+    const queryTypeSelect = document.getElementById('query_type');
+
+    if (tableName && lab5Queries[tableName]) {
+        querySelect.style.display = 'block';
+        submitBtn.style.display = 'block';
+
+        queryTypeSelect.innerHTML = '<option value="">-- Выберите --</option>';
+        lab5Queries[tableName].forEach(query => {
+            queryTypeSelect.innerHTML += `<option value="${query.value}">${query.text}</option>`;
+        });
+    } else {
+        querySelect.style.display = 'none';
+        submitBtn.style.display = 'none';
+    }
+}
+</script>
+{% endblock %}

@@ -1,0 +1,22 @@
+<!-- core/templates/core/base.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Space Museum DB</title>
+    {% load static %}
+    <link rel="stylesheet" href="{% static 'core/css/style.css' %}">
+</head>
+<body>
+    <div class="window">
+        <div class="title-bar">
+            <div class="title-bar-text">🚀 SPACE MUSEUM DATABASE MANAGEMENT SYSTEM 🚀</div>
+        </div>
+        <div class="window-body">
+            {% block content %}
+            {% endblock %}
+        </div>
+    </div>
+</body>
+</html>

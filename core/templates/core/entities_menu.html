@@ -1,0 +1,38 @@
+<!-- core/templates/core/entities_menu.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'home' %}" class="back-button">← Назад в меню</a>
+
+<div class="menu-container">
+    <h1 class="menu-title">ОПЕРАЦИИ С СУЩНОСТЯМИ</h1>
+
+    <form method="get">
+        <div class="form-group">
+            <label>Выберите сущность:</label>
+            <select name="entity" required>
+                <option value="">-- Выберите --</option>
+                <option value="visitor">Посетители</option>
+                <option value="employee">Сотрудники</option>
+                <option value="exhibition">Выставки</option>
+                <option value="excursion">Экскурсии</option>
+                <option value="exhibit">Экспонаты</option>
+                <option value="mission">Космические миссии</option>
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>Выберите операцию:</label>
+            <select name="operation" required>
+                <option value="">-- Выберите --</option>
+                <option value="view">Просмотреть</option>
+                <option value="add">Добавить</option>
+                <option value="update">Обновить</option>
+                <option value="delete">Удалить</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn-submit">Применить</button>
+    </form>
+</div>
+{% endblock %}

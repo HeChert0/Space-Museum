@@ -1,0 +1,119 @@
+<!-- core/templates/core/entity_list.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ entity_name }}</h1>
+
+<!-- Форма фильтрации -->
+<div style="margin-bottom: 20px;">
+    <form method="get" style="display: flex; gap: 10px; align-items: stretch;">
+        <div class="form-group" style="margin: 0;">
+            <label>Фильтр по колонке:</label>
+            <select name="filter_column">
+                <option value="">-- Выберите --</option>
+                {% for col in columns %}
+                <option value="{{ col }}" {% if col == filter_column %}selected{% endif %}>{{ col }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group" style="margin: 0;">
+            <label>Значение:</label>
+            <input type="text" name="filter_value" value="{{ filter_value }}" placeholder="Введите значение">
+        </div>
+
+        <button type="submit" class="btn-submit" style="height: 42px; align-self: end;">Применить фильтр</button>
+
+        <a href="?save_result=true{% if filter_column %}&filter_column={{ filter_column }}{% endif %}{% if filter_value %}&filter_value={{ filter_value }}{% endif %}"
+           class="btn-submit"
+           style="text-decoration: none; height: 42px; align-self: end; display: flex; align-items: center;">
+           💾 Сохранить результат
+        </a>
+    </form>
+</div>
+
+<!-- Таблица с данными -->
+<div style="overflow-x: auto;">
+    <table>
+        <thead>
+            <tr>
+                {% for col in columns %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                {% for col in columns %}
+                <td>
+                    {% if col == 'visitor_id' %}{{ item.visitor_id }}
+                    {% elif col == 'id' and entity_type == 'visitor' %}{{ item.visitor_id }}
+                    {% elif col == 'full_name' %}{{ item.full_name }}
+                    {% elif col == 'birth_date' %}{{ item.birth_date }}
+                    {% elif col == 'citizenship' %}{{ item.citizenship }}
+                    {% elif col == 'ticket_type' %}{{ item.ticket_type }}
+                    {% elif col == 'visit_date' %}{{ item.visit_date }}
+                    {% elif col == 'review' %}{{ item.review|truncatechars:50 }}
+
+                    {% elif col == 'employee_id' %}{{ item.employee_id }}
+                    {% elif col == 'id' and entity_type == 'employee' %}{{ item.employee_id }}
+                    {% elif col == 'position' %}{{ item.position }}
+                    {% elif col == 'hire_date' %}{{ item.hire_date }}
+                    {% elif col == 'department' %}{{ item.department }}
+                    {% elif col == 'phone' %}{{ item.phone }}
+                    {% elif col == 'qualification' %}{{ item.qualification }}
+
+                    {% elif col == 'exhibition_id' %}{{ item.exhibition_id }}
+                    {% elif col == 'id' and entity_type == 'exhibition' %}{{ item.exhibition_id }}
+                    {% elif col == 'title' %}{{ item.title }}
+                    {% elif col == 'theme' %}{{ item.theme }}
+                    {% elif col == 'start_date' %}{{ item.start_date }}
+                    {% elif col == 'end_date' %}{{ item.end_date }}
+                    {% elif col == 'location' %}{{ item.location }}
+                    {% elif col == 'type' %}{{ item.type }}
+
+                    {% elif col == 'excursion_id' %}{{ item.excursion_id }}
+                    {% elif col == 'id' and entity_type == 'excursion' %}{{ item.excursion_id }}
+                    {% elif col == 'date' %}{{ item.date }}
+                    {% elif col == 'language' %}{{ item.language }}
+                    {% elif col == 'ticket_num' %}{{ item.ticket_num }}
+                    {% elif col == 'price' %}{{ item.price }}
+                    {% elif col == 'duration' %}{{ item.duration }}
+
+                    {% elif col == 'exhibit_id' %}{{ item.exhibit_id }}
+                    {% elif col == 'id' and entity_type == 'exhibit' %}{{ item.exhibit_id }}
+                    {% elif col == 'description' %}{{ item.description|truncatechars:100 }}
+                    {% elif col == 'creation_date' %}{{ item.creation_date }}
+                    {% elif col == 'country' %}{{ item.country }}
+                    {% elif col == 'state' %}{{ item.state }}
+
+                    {% elif col == 'mission_id' %}{{ item.mission_id }}
+                    {% elif col == 'id' and entity_type == 'mission' %}{{ item.mission_id }}
+                    {% elif col == 'crew' %}{{ item.crew|truncatechars:50 }}
+                    {% elif col == 'goal' %}{{ item.goal }}
+
+                    {% else %}{{ item }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="{{ columns|length }}" style="text-align: center;">Нет данных</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid #00ff00; color: #00ff00;">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}

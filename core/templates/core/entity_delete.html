@@ -1,0 +1,30 @@
+<!-- core/templates/core/entity_delete.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">Удалить {{ entity_name }}</h1>
+
+<form method="post">
+    {% csrf_token %}
+    <div class="form-group">
+        <label for="{{ entity_type }}_id">ID записи для удаления:</label>
+        <input type="number"
+               name="{{ entity_type }}_id"
+               id="{{ entity_type }}_id"
+               required
+               placeholder="Введите ID">
+    </div>
+
+    <button type="submit" class="btn-submit" style="background-color: #330000; border-color: #ff0000; color: #ff0000;">Удалить</button>
+</form>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %}; color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}

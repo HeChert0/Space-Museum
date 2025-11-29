@@ -1,0 +1,90 @@
+<!-- core/templates/core/entity_select.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">Выберите {{ entity_name }} для {{ operation }}</h1>
+
+<div style="overflow-x: auto;">
+    <table>
+        <thead>
+            <tr>
+                <th>Действие</th>
+                {% for col in columns %}
+                <th>{{ col }}</th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for item in items %}
+            <tr>
+                <td>
+                    {% if operation == 'обновления' %}
+                    <a href="?id={{ item.pk }}" class="btn-submit" style="padding: 5px 10px;">Изменить</a>
+                    {% else %}
+                    <form method="post" style="display: inline;">
+                        {% csrf_token %}
+                        <input type="hidden" name="delete_id" value="{{ item.pk }}">
+                        <button type="submit" class="btn-submit" style="padding: 5px 10px; background-color: #330000; border-color: #ff0000; color: #ff0000;">Удалить</button>
+                    </form>
+                    {% endif %}
+                </td>
+                {% for col in columns %}
+                <td>
+                    {% if col == 'visitor_id' %}{{ item.visitor_id }}
+                    {% elif col == 'full_name' %}{{ item.full_name }}
+                    {% elif col == 'birth_date' %}{{ item.birth_date }}
+                    {% elif col == 'citizenship' %}{{ item.citizenship }}
+                    {% elif col == 'ticket_type' %}{{ item.ticket_type }}
+                    {% elif col == 'visit_date' %}{{ item.visit_date }}
+                    {% elif col == 'review' %}{{ item.review|truncatechars:30 }}
+                    {% elif col == 'employee_id' %}{{ item.employee_id }}
+                    {% elif col == 'position' %}{{ item.position }}
+                    {% elif col == 'hire_date' %}{{ item.hire_date }}
+                    {% elif col == 'department' %}{{ item.department }}
+                    {% elif col == 'phone' %}{{ item.phone }}
+                    {% elif col == 'qualification' %}{{ item.qualification }}
+                    {% elif col == 'exhibition_id' %}{{ item.exhibition_id }}
+                    {% elif col == 'title' %}{{ item.title }}
+                    {% elif col == 'theme' %}{{ item.theme }}
+                    {% elif col == 'start_date' %}{{ item.start_date }}
+                    {% elif col == 'end_date' %}{{ item.end_date }}
+                    {% elif col == 'location' %}{{ item.location }}
+                    {% elif col == 'type' %}{{ item.type }}
+                    {% elif col == 'excursion_id' %}{{ item.excursion_id }}
+                    {% elif col == 'date' %}{{ item.date }}
+                    {% elif col == 'language' %}{{ item.language }}
+                    {% elif col == 'ticket_num' %}{{ item.ticket_num }}
+                    {% elif col == 'price' %}{{ item.price }}
+                    {% elif col == 'duration' %}{{ item.duration }}
+                    {% elif col == 'exhibit_id' %}{{ item.exhibit_id }}
+                    {% elif col == 'description' %}{{ item.description|truncatechars:30 }}
+                    {% elif col == 'creation_date' %}{{ item.creation_date }}
+                    {% elif col == 'country' %}{{ item.country }}
+                    {% elif col == 'state' %}{{ item.state }}
+                    {% elif col == 'mission_id' %}{{ item.mission_id }}
+                    {% elif col == 'crew' %}{{ item.crew|truncatechars:30 }}
+                    {% elif col == 'goal' %}{{ item.goal }}
+                    {% else %}{{ item }}
+                    {% endif %}
+                </td>
+                {% endfor %}
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="{{ columns|length|add:1 }}" style="text-align: center;">Нет данных</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %}; color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}

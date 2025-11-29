@@ -1,0 +1,28 @@
+<!-- core/templates/core/home.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<div class="menu-container">
+    <h1 class="menu-title">🚀 SPACE MUSEUM DATABASE 🚀</h1>
+
+    <a href="{% url 'entities_menu' %}" class="menu-button">
+        ⚙ Операции с сущностями
+    </a>
+
+    <a href="{% url 'special_queries' %}" class="menu-button">
+        📊 Специальные SQL запросы
+    </a>
+
+    <a href="{% url 'save_database_state' %}" class="menu-button">
+        💾 Сохранить состояние БД
+    </a>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid #00ff00; color: #00ff00; text-align: center;">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}

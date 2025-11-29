@@ -1,0 +1,41 @@
+<!-- core/templates/core/entity_form.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+<form method="post">
+    {% csrf_token %}
+    {% for field in fields %}
+    <div class="form-group">
+        <label for="id_{{ field.name }}">
+            {{ field.label }}{% if field.required %}*{% endif %}:
+        </label>
+        {% if field.type == 'textarea' %}
+            <textarea name="{{ field.name }}"
+                     id="id_{{ field.name }}"
+                     {% if field.required %}required{% endif %}
+                     placeholder="Введите {{ field.label|lower }}"></textarea>
+        {% else %}
+            <input type="{{ field.type }}"
+                   name="{{ field.name }}"
+                   id="id_{{ field.name }}"
+                   {% if field.required %}required{% endif %}
+                   placeholder="Введите {{ field.label|lower }}">
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %}; color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}

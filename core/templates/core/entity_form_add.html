@@ -1,0 +1,46 @@
+<!-- core/templates/core/entity_form_add.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">Добавить {{ entity_name }}</h1>
+
+<form method="post" action="">
+    {% csrf_token %}
+    {% for field in fields %}
+    <div class="form-group">
+        <label for="{{ field.name }}_field">
+            {{ field.label }}{% if field.required %}*{% endif %}:
+        </label>
+        {% if field.type == 'textarea' %}
+            <textarea
+                name="{{ field.name }}"
+                id="{{ field.name }}_field"
+                class="form-control"
+                placeholder="Введите {{ field.label|lower }}"
+                {% if field.required %}required{% endif %}></textarea>
+        {% else %}
+            <input
+                type="{{ field.type|default:'text' }}"
+                name="{{ field.name }}"
+                id="{{ field.name }}_field"
+                class="form-control"
+                placeholder="Введите {{ field.label|lower }}"
+                {% if field.type == 'number' %}step="any"{% endif %}
+                {% if field.required %}required{% endif %}>
+        {% endif %}
+    </div>
+    {% endfor %}
+
+    <button type="submit" class="btn-submit">Добавить</button>
+</form>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid #00ff00; color: #00ff00;">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}
