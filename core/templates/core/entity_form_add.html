@@ -4,43 +4,115 @@
 {% block content %}
 <a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
 
-<h1 class="menu-title">Добавить {{ entity_name }}</h1>
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
 
-<form method="post" action="">
+<form method="post" class="entity-form">
     {% csrf_token %}
-    {% for field in fields %}
-    <div class="form-group">
-        <label for="{{ field.name }}_field">
-            {{ field.label }}{% if field.required %}*{% endif %}:
-        </label>
-        {% if field.type == 'textarea' %}
-            <textarea
-                name="{{ field.name }}"
-                id="{{ field.name }}_field"
-                class="form-control"
-                placeholder="Введите {{ field.label|lower }}"
-                {% if field.required %}required{% endif %}></textarea>
-        {% else %}
-            <input
-                type="{{ field.type|default:'text' }}"
-                name="{{ field.name }}"
-                id="{{ field.name }}_field"
-                class="form-control"
-                placeholder="Введите {{ field.label|lower }}"
-                {% if field.type == 'number' %}step="any"{% endif %}
-                {% if field.required %}required{% endif %}>
-        {% endif %}
-    </div>
-    {% endfor %}
 
-    <button type="submit" class="btn-submit">Добавить</button>
+    {% if entity_type == 'mission' %}
+        <!-- Специальная форма для миссий -->
+        <div class="form-group">
+            <label for="title">Название:</label>
+            <input type="text" name="title" required>
+        </div>
+
+        <div class="form-group">
+            <label for="country">Страна:</label>
+            <input type="text" name="country" required>
+        </div>
+
+        <div class="form-group">
+            <label for="start_date">Дата начала:</label>
+            <input type="date" name="start_date" required>
+        </div>
+
+        <div class="form-group">
+            <label for="end_date">Дата окончания:</label>
+            <input type="date" name="end_date" required>
+        </div>
+
+        <div class="form-group">
+            <label>Экипаж:</label>
+            <div id="crew-container">
+                <!-- Члены экипажа будут добавляться сюда -->
+            </div>
+            <button type="button" onclick="addCrewMember()" class="btn-add-crew">➕ Добавить члена экипажа</button>
+        </div>
+
+        <div class="form-group">
+            <label for="goal">Цель:</label>
+            <input type="text" name="goal" required>
+        </div>
+    {% else %}
+        <!-- Обычная форма для остальных -->
+        {% for field in fields %}
+        <div class="form-group">
+            <label for="{{ field.name }}">{{ field.label }}:</label>
+            {% if field.type == 'textarea' %}
+                <textarea name="{{ field.name }}" {% if field.required %}required{% endif %}>{% if field.value %}{{ field.value }}{% endif %}</textarea>
+            {% else %}
+                <input type="{{ field.type }}" name="{{ field.name }}" {% if field.value %}value="{{ field.value }}"{% endif %} {% if field.required %}required{% endif %}>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
 </form>
 
-{% if messages %}
-    {% for message in messages %}
-        <div style="margin-top: 20px; padding: 10px; border: 1px solid #00ff00; color: #00ff00;">
-            {{ message }}
-        </div>
-    {% endfor %}
+<style>
+    .crew-member-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: center;
+    }
+    .crew-member-row input {
+        flex: 1;
+    }
+    .btn-remove-crew {
+        background: #ff0000;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 3px;
+    }
+    .btn-add-crew {
+        background: #00ff00;
+        color: black;
+        border: none;
+        padding: 8px 15px;
+        cursor: pointer;
+        border-radius: 3px;
+        margin-top: 10px;
+    }
+</style>
+
+{% if entity_type == 'mission' %}
+<script>
+    let crewCount = 0;
+
+    function addCrewMember() {
+        if (crewCount >= 20) {
+            alert('Максимум 20 членов экипажа');
+            return;
+        }
+
+        crewCount++;
+        const container = document.getElementById('crew-container');
+        const row = document.createElement('div');
+        row.className = 'crew-member-row';
+        row.id = 'crew-row-' + crewCount;
+        row.innerHTML = '<input type="text" name="crew[]" placeholder="ФИО члена экипажа">' +
+                       '<button type="button" onclick="removeCrewMember(' + crewCount + ')" class="btn-remove-crew">❌</button>';
+        container.appendChild(row);
+    }
+
+    function removeCrewMember(id) {
+        const row = document.getElementById('crew-row-' + id);
+        if (row) row.remove();
+    }
+</script>
 {% endif %}
 {% endblock %}

@@ -1,12 +1,13 @@
 <!-- core/templates/core/entity_list.html -->
 {% extends 'core/base.html' %}
+{% load custom_filters %}
 
 {% block content %}
 <a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
 
 <h1 class="menu-title">{{ entity_name }}</h1>
 
-<!-- Форма фильтрации -->
+<!-- Форма фильтрации (обновленный стиль кнопок) -->
 <div style="margin-bottom: 20px;">
     <form method="get" style="display: flex; gap: 10px; align-items: stretch;">
         <div class="form-group" style="margin: 0;">
@@ -26,21 +27,66 @@
 
         <button type="submit" class="btn-submit" style="height: 42px; align-self: end;">Применить фильтр</button>
 
-        <a href="?save_result=true{% if filter_column %}&filter_column={{ filter_column }}{% endif %}{% if filter_value %}&filter_value={{ filter_value }}{% endif %}"
-           class="btn-submit"
-           style="text-decoration: none; height: 42px; align-self: end; display: flex; align-items: center;">
-           💾 Сохранить результат
-        </a>
+        {% if items %}
+            <a href="?save_result=true{% if filter_column %}&filter_column={{ filter_column }}{% endif %}{% if filter_value %}&filter_value={{ filter_value }}{% endif %}"
+               class="btn-submit"
+               style="text-decoration: none; height: 42px; align-self: end; display: flex; align-items: center;">
+               💾 Сохранить результат
+            </a>
+        {% endif %}
+
+        {% if filter_column and filter_value %}
+            <a href="{% url entity_type|add:'_list' %}" class="btn-submit" style="text-decoration: none; height: 42px; align-self: end; display: flex; align-items: center;">Сбросить фильтр</a>
+        {% endif %}
     </form>
 </div>
 
-<!-- Таблица с данными -->
+<!-- Таблица с данными (логика и заголовки от нового файла) -->
 <div style="overflow-x: auto;">
     <table>
         <thead>
             <tr>
                 {% for col in columns %}
-                <th>{{ col }}</th>
+                    <th>
+                        {% if col == 'exhibit_id' %}ID
+                        {% elif col == 'title' %}Название
+                        {% elif col == 'description' %}Описание
+                        {% elif col == 'creation_date' %}Дата создания
+                        {% elif col == 'country' %}Страна
+                        {% elif col == 'state' %}Состояние
+                        {% elif col == 'type' %}Тип
+                        {% elif col == 'mission_id' %}Миссия
+                        {% elif col == 'employee_id' %}Сотрудник
+                        {% elif col == 'visitor_id' %}ID
+                        {% elif col == 'full_name' %}ФИО
+                        {% elif col == 'birth_date' %}Дата рождения
+                        {% elif col == 'citizenship' %}Гражданство
+                        {% elif col == 'ticket_type' %}Тип билета
+                        {% elif col == 'visit_date' %}Дата посещения
+                        {% elif col == 'review' %}Отзыв
+                        {% elif col == 'employee_id' %}ID
+                        {% elif col == 'position' %}Должность
+                        {% elif col == 'hire_date' %}Дата найма
+                        {% elif col == 'department' %}Отдел
+                        {% elif col == 'phone' %}Телефон
+                        {% elif col == 'qualification' %}Квалификация
+                        {% elif col == 'excursion_id' %}ID
+                        {% elif col == 'date' %}Дата
+                        {% elif col == 'language' %}Язык
+                        {% elif col == 'ticket_num' %}Кол-во билетов
+                        {% elif col == 'price' %}Цена
+                        {% elif col == 'duration' %}Продолжительность
+                        {% elif col == 'exhibition_id' %}ID
+                        {% elif col == 'theme' %}Тема
+                        {% elif col == 'start_date' %}Дата начала
+                        {% elif col == 'end_date' %}Дата окончания
+                        {% elif col == 'location' %}Место
+                        {% elif col == 'mission_id' %}ID
+                        {% elif col == 'crew' %}Экипаж
+                        {% elif col == 'goal' %}Цель
+                        {% else %}{{ col }}
+                        {% endif %}
+                    </th>
                 {% endfor %}
             </tr>
         </thead>
@@ -49,69 +95,57 @@
             <tr>
                 {% for col in columns %}
                 <td>
-                    {% if col == 'visitor_id' %}{{ item.visitor_id }}
-                    {% elif col == 'id' and entity_type == 'visitor' %}{{ item.visitor_id }}
-                    {% elif col == 'full_name' %}{{ item.full_name }}
-                    {% elif col == 'birth_date' %}{{ item.birth_date }}
-                    {% elif col == 'citizenship' %}{{ item.citizenship }}
-                    {% elif col == 'ticket_type' %}{{ item.ticket_type }}
-                    {% elif col == 'visit_date' %}{{ item.visit_date }}
-                    {% elif col == 'review' %}{{ item.review|truncatechars:50 }}
-
-                    {% elif col == 'employee_id' %}{{ item.employee_id }}
-                    {% elif col == 'id' and entity_type == 'employee' %}{{ item.employee_id }}
-                    {% elif col == 'position' %}{{ item.position }}
-                    {% elif col == 'hire_date' %}{{ item.hire_date }}
-                    {% elif col == 'department' %}{{ item.department }}
-                    {% elif col == 'phone' %}{{ item.phone }}
-                    {% elif col == 'qualification' %}{{ item.qualification }}
-
-                    {% elif col == 'exhibition_id' %}{{ item.exhibition_id }}
-                    {% elif col == 'id' and entity_type == 'exhibition' %}{{ item.exhibition_id }}
-                    {% elif col == 'title' %}{{ item.title }}
-                    {% elif col == 'theme' %}{{ item.theme }}
-                    {% elif col == 'start_date' %}{{ item.start_date }}
-                    {% elif col == 'end_date' %}{{ item.end_date }}
-                    {% elif col == 'location' %}{{ item.location }}
-                    {% elif col == 'type' %}{{ item.type }}
-
-                    {% elif col == 'excursion_id' %}{{ item.excursion_id }}
-                    {% elif col == 'id' and entity_type == 'excursion' %}{{ item.excursion_id }}
-                    {% elif col == 'date' %}{{ item.date }}
-                    {% elif col == 'language' %}{{ item.language }}
-                    {% elif col == 'ticket_num' %}{{ item.ticket_num }}
-                    {% elif col == 'price' %}{{ item.price }}
-                    {% elif col == 'duration' %}{{ item.duration }}
-
-                    {% elif col == 'exhibit_id' %}{{ item.exhibit_id }}
-                    {% elif col == 'id' and entity_type == 'exhibit' %}{{ item.exhibit_id }}
-                    {% elif col == 'description' %}{{ item.description|truncatechars:100 }}
-                    {% elif col == 'creation_date' %}{{ item.creation_date }}
-                    {% elif col == 'country' %}{{ item.country }}
-                    {% elif col == 'state' %}{{ item.state }}
-
-                    {% elif col == 'mission_id' %}{{ item.mission_id }}
-                    {% elif col == 'id' and entity_type == 'mission' %}{{ item.mission_id }}
-                    {% elif col == 'crew' %}{{ item.crew|truncatechars:50 }}
-                    {% elif col == 'goal' %}{{ item.goal }}
-
-                    {% else %}{{ item }}
+                    {% if entity_type == 'exhibit' %}
+                        {% if col == 'exhibit_id' %}{{ item.exhibit_id }}
+                        {% elif col == 'title' %}{{ item.title }}
+                        {% elif col == 'description' %}{{ item.description|truncatechars:100 }}
+                        {% elif col == 'creation_date' %}{{ item.creation_date }}
+                        {% elif col == 'country' %}{{ item.country }}
+                        {% elif col == 'state' %}{{ item.state }}
+                        {% elif col == 'type' %}{{ item.type }}
+                        {% elif col == 'mission_id' %}{{ item.mission_title|default:"—" }}
+                        {% else %}{{ item|get_item:col|default:"—" }}
+                        {% endif %}
+                    {% elif entity_type == 'excursion' %}
+                        {% if col == 'excursion_id' %}{{ item.excursion_id }}
+                        {% elif col == 'title' %}{{ item.title }}
+                        {% elif col == 'date' %}{{ item.date }}
+                        {% elif col == 'language' %}{{ item.language }}
+                        {% elif col == 'ticket_num' %}{{ item.ticket_num }}
+                        {% elif col == 'price' %}{{ item.price }}
+                        {% elif col == 'duration' %}{{ item.duration }}
+                        {% elif col == 'employee_id' %}{{ item.employee_name|default:"—" }}
+                        {% else %}{{ item|get_item:col|default:"—" }}
+                        {% endif %}
+                    {% elif entity_type == 'mission' %}
+                        {% if col == 'mission_id' %}{{ item.mission_id }}
+                        {% elif col == 'title' %}{{ item.title }}
+                        {% elif col == 'country' %}{{ item.country }}
+                        {% elif col == 'start_date' %}{{ item.start_date }}
+                        {% elif col == 'end_date' %}{{ item.end_date }}
+                        {% elif col == 'crew' %}{{ item.crew|truncatechars:50 }}
+                        {% elif col == 'goal' %}{{ item.goal }}
+                        {% else %}{{ item|get_item:col|default:"—" }}
+                        {% endif %}
+                    {% else %}
+                        {{ item|get_item:col|default:"—" }}
                     {% endif %}
                 </td>
                 {% endfor %}
             </tr>
             {% empty %}
             <tr>
-                <td colspan="{{ columns|length }}" style="text-align: center;">Нет данных</td>
+                <td colspan="{{ columns|length }}" style="text-align: center;">Нет данных для отображения</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
 
+<!-- Блок сообщений (логика от нового файла) -->
 {% if messages %}
     {% for message in messages %}
-        <div style="margin-top: 20px; padding: 10px; border: 1px solid #00ff00; color: #00ff00;">
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %}; color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};">
             {{ message }}
         </div>
     {% endfor %}

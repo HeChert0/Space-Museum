@@ -1,16 +1,15 @@
-# core/views.py
-
 from django.shortcuts import render, redirect, get_object_or_404
-from django.db import connection, transaction
+from django.db import connection, transaction, models
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse
 from .models import *
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date
 import os
 from django.conf import settings
 import openpyxl
 import openpyxl.utils
+
 
 
 def home(request):
@@ -48,7 +47,7 @@ def visitor_list(request):
     if request.GET.get('save_result'):
         return save_query_result(list(visitors.values()), 'visitors_filtered')
 
-    columns = ['id', 'full_name', 'birth_date', 'citizenship', 'ticket_type', 'visit_date', 'review']
+    columns = ['visitor_id', 'full_name', 'birth_date', 'citizenship', 'ticket_type', 'visit_date', 'review']
 
     return render(request, 'core/entity_list.html', {
         'entity_name': 'Посетители',
@@ -63,19 +62,28 @@ def visitor_list(request):
 def visitor_add(request):
     if request.method == 'POST':
         try:
-            visitor = Visitor(
-                full_name=request.POST['full_name'],
-                birth_date=request.POST['birth_date'],
-                citizenship=request.POST['citizenship'],
-                ticket_type=request.POST['ticket_type'],
-                visit_date=request.POST['visit_date'],
-                review=request.POST.get('review', '')
-            )
+            # Получаем максимальный ID
+            max_id = Visitor.objects.aggregate(models.Max('visitor_id'))['visitor_id__max']
+            new_id = (max_id or 0) + 1
 
-            # Валидация: дата посещения не может быть раньше даты рождения
-            if visitor.visit_date < visitor.birth_date:
+            # Преобразуем строки в даты
+            birth_date = datetime.strptime(request.POST['birth_date'], '%Y-%m-%d').date()
+            visit_date = datetime.strptime(request.POST['visit_date'], '%Y-%m-%d').date()
+
+            # Валидация
+            if visit_date < birth_date:
                 messages.error(request, 'Дата посещения не может быть раньше даты рождения!')
                 return redirect('visitor_add')
+
+            visitor = Visitor(
+                visitor_id=new_id,
+                full_name=request.POST['full_name'],
+                birth_date=birth_date,
+                citizenship=request.POST['citizenship'],
+                ticket_type=request.POST['ticket_type'],
+                visit_date=visit_date,
+                review=request.POST.get('review', '')
+            )
 
             visitor.save()
             messages.success(request, 'Посетитель успешно добавлен!')
@@ -105,21 +113,26 @@ def visitor_update(request):
     selected_id = request.GET.get('id')
 
     if selected_id:
-        visitor = get_object_or_404(Visitor, id=selected_id)
+        visitor = get_object_or_404(Visitor, visitor_id=selected_id)
 
         if request.method == 'POST':
             try:
                 visitor.full_name = request.POST['full_name']
-                visitor.birth_date = request.POST['birth_date']
-                visitor.citizenship = request.POST['citizenship']
-                visitor.ticket_type = request.POST['ticket_type']
-                visitor.visit_date = request.POST['visit_date']
-                visitor.review = request.POST.get('review', '')
+
+                # Преобразуем строки в даты
+                birth_date = datetime.strptime(request.POST['birth_date'], '%Y-%m-%d').date()
+                visit_date = datetime.strptime(request.POST['visit_date'], '%Y-%m-%d').date()
 
                 # Валидация
-                if visitor.visit_date < visitor.birth_date:
+                if visit_date < birth_date:
                     messages.error(request, 'Дата посещения не может быть раньше даты рождения!')
                     return redirect(f'visitor_update?id={selected_id}')
+
+                visitor.birth_date = birth_date
+                visitor.visit_date = visit_date
+                visitor.citizenship = request.POST['citizenship']
+                visitor.ticket_type = request.POST['ticket_type']
+                visitor.review = request.POST.get('review', '')
 
                 visitor.save()
                 messages.success(request, 'Посетитель успешно обновлен!')
@@ -147,7 +160,16 @@ def visitor_update(request):
             'entity_type': 'visitor'
         })
 
-    columns = ['id', 'full_name', 'birth_date', 'citizenship']
+    columns = ['visitor_id', 'full_name', 'birth_date', 'citizenship']
+    return render(request, 'core/entity_select.html', {
+        'entity_name': 'Посетитель',
+        'items': visitors,
+        'columns': columns,
+        'entity_type': 'visitor',
+        'operation': 'обновления'
+    })
+
+    columns = ['visitor_id', 'full_name', 'birth_date', 'citizenship']
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Посетитель',
         'items': visitors,
@@ -162,7 +184,7 @@ def visitor_delete(request):
         delete_id = request.POST.get('delete_id')
         if delete_id:
             try:
-                visitor = Visitor.objects.get(id=delete_id)
+                visitor = Visitor.objects.get(visitor_id=delete_id)
                 visitor.delete()
                 messages.success(request, f'Посетитель "{visitor.full_name}" успешно удален!')
             except Visitor.DoesNotExist:
@@ -172,7 +194,7 @@ def visitor_delete(request):
             return redirect('visitor_delete')
 
     visitors = Visitor.objects.all()
-    columns = ['id', 'full_name', 'birth_date', 'citizenship']
+    columns = ['visitor_id', 'full_name', 'birth_date', 'citizenship']
 
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Посетитель',
@@ -197,7 +219,7 @@ def employee_list(request):
     if request.GET.get('save_result'):
         return save_query_result(list(employees.values()), 'employees_filtered')
 
-    columns = ['id', 'full_name', 'position', 'hire_date', 'department', 'phone', 'qualification']
+    columns = ['employee_id', 'full_name', 'position', 'hire_date', 'department', 'phone', 'qualification']
 
     return render(request, 'core/entity_list.html', {
         'entity_name': 'Сотрудники',
@@ -212,20 +234,27 @@ def employee_list(request):
 def employee_add(request):
     if request.method == 'POST':
         try:
+            # Получаем максимальный ID
+            max_id = Employee.objects.aggregate(models.Max('employee_id'))['employee_id__max']
+            new_id = (max_id or 0) + 1
+
+            # Преобразуем строку в дату
+            hire_date = datetime.strptime(request.POST['hire_date'], '%Y-%m-%d').date()
+
+            # Валидация
+            if hire_date > date.today():
+                messages.error(request, 'Дата найма не может быть в будущем!')
+                return redirect('employee_add')
+
             employee = Employee(
+                employee_id=new_id,
                 full_name=request.POST['full_name'],
                 position=request.POST['position'],
-                hire_date=request.POST['hire_date'],
+                hire_date=hire_date,
                 department=request.POST['department'],
                 phone=request.POST['phone'],
                 qualification=request.POST['qualification']
             )
-
-            # Валидация: дата найма не может быть в будущем
-            from datetime import date
-            if employee.hire_date > date.today():
-                messages.error(request, 'Дата найма не может быть в будущем!')
-                return redirect('employee_add')
 
             employee.save()
             messages.success(request, 'Сотрудник успешно добавлен!')
@@ -255,22 +284,25 @@ def employee_update(request):
     selected_id = request.GET.get('id')
 
     if selected_id:
-        employee = get_object_or_404(Employee, id=selected_id)
+        employee = get_object_or_404(Employee, employee_id=selected_id)
 
         if request.method == 'POST':
             try:
                 employee.full_name = request.POST['full_name']
                 employee.position = request.POST['position']
-                employee.hire_date = request.POST['hire_date']
+
+                hire_date = datetime.strptime(request.POST['hire_date'], '%Y-%m-%d').date()
+
+                if hire_date > date.today():
+                    messages.error(request, 'Дата найма не может быть в будущем!')
+                    return redirect(f'employee_update?id={selected_id}')
+
+                employee.hire_date = hire_date
                 employee.department = request.POST['department']
                 employee.phone = request.POST['phone']
                 employee.qualification = request.POST['qualification']
 
                 # Валидация
-                from datetime import date
-                if employee.hire_date > date.today():
-                    messages.error(request, 'Дата найма не может быть в будущем!')
-                    return redirect(f'employee_update?id={selected_id}')
 
                 employee.save()
                 messages.success(request, 'Сотрудник успешно обновлен!')
@@ -295,7 +327,7 @@ def employee_update(request):
             'entity_type': 'employee'
         })
 
-    columns = ['id', 'full_name', 'position', 'department']
+    columns = ['employee_id', 'full_name', 'position', 'department']
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Сотрудник',
         'items': employees,
@@ -310,7 +342,7 @@ def employee_delete(request):
         delete_id = request.POST.get('delete_id')
         if delete_id:
             try:
-                employee = Employee.objects.get(id=delete_id)
+                employee = Employee.objects.get(employee_id=delete_id)
                 employee.delete()
                 messages.success(request, f'Сотрудник "{employee.full_name}" успешно удален!')
             except Employee.DoesNotExist:
@@ -320,7 +352,7 @@ def employee_delete(request):
             return redirect('employee_delete')
 
     employees = Employee.objects.all()
-    columns = ['id', 'full_name', 'position', 'department']
+    columns = ['employee_id', 'full_name', 'position', 'department']
 
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Сотрудник',
@@ -345,7 +377,7 @@ def exhibition_list(request):
     if request.GET.get('save_result'):
         return save_query_result(list(exhibitions.values()), 'exhibitions_filtered')
 
-    columns = ['id', 'title', 'theme', 'start_date', 'end_date', 'location', 'type']
+    columns = ['exhibition_id', 'title', 'theme', 'start_date', 'end_date', 'location', 'type']
 
     return render(request, 'core/entity_list.html', {
         'entity_name': 'Выставки',
@@ -360,19 +392,28 @@ def exhibition_list(request):
 def exhibition_add(request):
     if request.method == 'POST':
         try:
+            # Получаем максимальный ID
+            max_id = Exhibition.objects.aggregate(models.Max('exhibition_id'))['exhibition_id__max']
+            new_id = (max_id or 0) + 1
+
+            # Преобразуем строки в даты
+            start_date = datetime.strptime(request.POST['start_date'], '%Y-%m-%d').date()
+            end_date = datetime.strptime(request.POST['end_date'], '%Y-%m-%d').date()
+
+            # Валидация
+            if end_date < start_date:
+                messages.error(request, 'Дата окончания не может быть раньше даты начала!')
+                return redirect('exhibition_add')
+
             exhibition = Exhibition(
+                exhibition_id=new_id,
                 title=request.POST['title'],
                 theme=request.POST['theme'],
-                start_date=request.POST['start_date'],
-                end_date=request.POST['end_date'],
+                start_date=start_date,
+                end_date=end_date,
                 location=request.POST['location'],
                 type=request.POST['type']
             )
-
-            # Валидация: дата окончания не может быть раньше даты начала
-            if exhibition.end_date < exhibition.start_date:
-                messages.error(request, 'Дата окончания не может быть раньше даты начала!')
-                return redirect('exhibition_add')
 
             exhibition.save()
             messages.success(request, 'Выставка успешно добавлена!')
@@ -402,21 +443,25 @@ def exhibition_update(request):
     selected_id = request.GET.get('id')
 
     if selected_id:
-        exhibition = get_object_or_404(Exhibition, id=selected_id)
+        exhibition = get_object_or_404(Exhibition, exhibition_id=selected_id)
 
         if request.method == 'POST':
             try:
                 exhibition.title = request.POST['title']
                 exhibition.theme = request.POST['theme']
-                exhibition.start_date = request.POST['start_date']
-                exhibition.end_date = request.POST['end_date']
-                exhibition.location = request.POST['location']
-                exhibition.type = request.POST['type']
+
+                start_date = datetime.strptime(request.POST['start_date'], '%Y-%m-%d').date()
+                end_date = datetime.strptime(request.POST['end_date'], '%Y-%m-%d').date()
 
                 # Валидация
-                if exhibition.end_date < exhibition.start_date:
-                    messages.error(request, 'Дата окончания не может быть раньше даты начала!')
+                if end_date < start_date:
+                    messages.error(request, 'Дата начала не может быть больше даты окончания!')
                     return redirect(f'exhibition_update?id={selected_id}')
+
+                exhibition.start_date = start_date
+                exhibition.end_date = end_date
+                exhibition.location = request.POST['location']
+                exhibition.type = request.POST['type']
 
                 exhibition.save()
                 messages.success(request, 'Выставка успешно обновлена!')
@@ -443,7 +488,7 @@ def exhibition_update(request):
             'entity_type': 'exhibition'
         })
 
-    columns = ['id', 'title', 'theme', 'location']
+    columns = ['exhibition_id', 'title', 'theme', 'location']
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Выставка',
         'items': exhibitions,
@@ -458,7 +503,7 @@ def exhibition_delete(request):
         delete_id = request.POST.get('delete_id')
         if delete_id:
             try:
-                exhibition = Exhibition.objects.get(id=delete_id)
+                exhibition = Exhibition.objects.get(exhibition_id=delete_id)
                 exhibition.delete()
                 messages.success(request, f'Выставка "{exhibition.title}" успешно удалена!')
             except Exhibition.DoesNotExist:
@@ -468,7 +513,7 @@ def exhibition_delete(request):
             return redirect('exhibition_delete')
 
     exhibitions = Exhibition.objects.all()
-    columns = ['id', 'title', 'theme', 'location']
+    columns = ['exhibition_id', 'title', 'theme', 'location']
 
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Выставка',
@@ -481,7 +526,8 @@ def exhibition_delete(request):
 
 # ============= EXCURSION CRUD =============
 def excursion_list(request):
-    excursions = Excursion.objects.all()
+    # Аналогично для экскурсий
+    excursions = Excursion.objects.select_related('employee').all()
 
     filter_column = request.GET.get('filter_column', '')
     filter_value = request.GET.get('filter_value', '')
@@ -491,13 +537,39 @@ def excursion_list(request):
         excursions = excursions.filter(**filter_dict)
 
     if request.GET.get('save_result'):
-        return save_query_result(list(excursions.values()), 'excursions_filtered')
+        data = []
+        for excursion in excursions:
+            data.append({
+                'excursion_id': excursion.excursion_id,
+                'title': excursion.title,
+                'date': excursion.date,
+                'language': excursion.language,
+                'ticket_num': excursion.ticket_num,
+                'price': excursion.price,
+                'duration': excursion.duration,
+                'employee': excursion.employee.full_name if excursion.employee else None
+            })
+        return save_query_result(data, 'excursions_filtered')
 
-    columns = ['id', 'title', 'date', 'language', 'ticket_num', 'price', 'duration', 'employee_id']
+    # Подготавливаем данные для отображения
+    excursions_display = []
+    for excursion in excursions:
+        excursions_display.append({
+            'excursion_id': excursion.excursion_id,
+            'title': excursion.title,
+            'date': excursion.date,
+            'language': excursion.language,
+            'ticket_num': excursion.ticket_num,
+            'price': excursion.price,
+            'duration': excursion.duration,
+            'employee_name': excursion.employee.full_name if excursion.employee else None
+        })
+
+    columns = ['excursion_id', 'title', 'date', 'language', 'ticket_num', 'price', 'duration', 'employee_id']
 
     return render(request, 'core/entity_list.html', {
         'entity_name': 'Экскурсии',
-        'items': excursions,
+        'items': excursions_display,
         'columns': columns,
         'entity_type': 'excursion',
         'filter_column': filter_column,
@@ -508,9 +580,17 @@ def excursion_list(request):
 def excursion_add(request):
     if request.method == 'POST':
         try:
+            # Получаем максимальный ID
+            max_id = Excursion.objects.aggregate(models.Max('excursion_id'))['excursion_id__max']
+            new_id = (max_id or 0) + 1
+
+            # Преобразуем строку в дату
+            excursion_date = datetime.strptime(request.POST['date'], '%Y-%m-%d').date()
+
             excursion = Excursion(
+                excursion_id=new_id,
                 title=request.POST['title'],
-                date=request.POST['date'],
+                date=excursion_date,
                 language=request.POST['language'],
                 ticket_num=request.POST['ticket_num'],
                 price=request.POST['price'],
@@ -518,12 +598,13 @@ def excursion_add(request):
             )
 
             # Обработка employee_id
-            employee_id = request.POST.get('employee_id', '')
-            if employee_id:
+            employee_id_value = request.POST.get('employee_id', '').strip()
+            if employee_id_value:
                 try:
-                    excursion.employee = Employee.objects.get(id=employee_id)
-                except Employee.DoesNotExist:
-                    messages.error(request, f'Сотрудник с ID {employee_id} не найден!')
+                    employee = Employee.objects.get(employee_id=int(employee_id_value))
+                    excursion.employee = employee  # Присваиваем объект
+                except (ValueError, Employee.DoesNotExist):
+                    messages.error(request, f'Сотрудник с ID {employee_id_value} не найден!')
                     return redirect('excursion_add')
 
             # Валидация
@@ -550,9 +631,9 @@ def excursion_add(request):
         {'name': 'date', 'label': 'Дата', 'type': 'date', 'required': True},
         {'name': 'language', 'label': 'Язык', 'type': 'text', 'required': True},
         {'name': 'ticket_num', 'label': 'Количество билетов', 'type': 'number', 'required': True},
-        {'name': 'price', 'label': 'Цена', 'type': 'number', 'required': True},
+        {'name': 'price', 'label': 'Цена', 'type': 'number', 'required': True, 'step': '0.01'},
         {'name': 'duration', 'label': 'Продолжительность (минуты)', 'type': 'number', 'required': True},
-        {'name': 'employee_id', 'label': 'ID сотрудника', 'type': 'number', 'required': False},
+        {'name': 'employee_id', 'label': 'ID сотрудника (необязательно)', 'type': 'number', 'required': False},
     ]
 
     return render(request, 'core/entity_form_add.html', {
@@ -568,23 +649,28 @@ def excursion_update(request):
     selected_id = request.GET.get('id')
 
     if selected_id:
-        excursion = get_object_or_404(Excursion, id=selected_id)
+        excursion = get_object_or_404(Excursion, excursion_id=selected_id)
 
         if request.method == 'POST':
             try:
                 excursion.title = request.POST['title']
-                excursion.date = request.POST['date']
+
+                # Преобразуем строку в дату
+                excursion_date = datetime.strptime(request.POST['date'], '%Y-%m-%d').date()
+                excursion.date = excursion_date
+
                 excursion.language = request.POST['language']
                 excursion.ticket_num = request.POST['ticket_num']
                 excursion.price = request.POST['price']
                 excursion.duration = request.POST['duration']
 
-                employee_id = request.POST.get('employee_id', '')
-                if employee_id:
+                employee_id_value = request.POST.get('employee_id', '').strip()
+                if employee_id_value:
                     try:
-                        excursion.employee = Employee.objects.get(id=employee_id)
-                    except Employee.DoesNotExist:
-                        messages.error(request, f'Сотрудник с ID {employee_id} не найден!')
+                        employee = Employee.objects.get(employee_id=int(employee_id_value))
+                        excursion.employee = employee
+                    except (ValueError, Employee.DoesNotExist):
+                        messages.error(request, f'Сотрудник с ID {employee_id_value} не найден!')
                         return redirect(f'excursion_update?id={selected_id}')
                 else:
                     excursion.employee = None
@@ -614,10 +700,11 @@ def excursion_update(request):
             {'name': 'language', 'label': 'Язык', 'type': 'text', 'required': True, 'value': excursion.language},
             {'name': 'ticket_num', 'label': 'Количество билетов', 'type': 'number', 'required': True,
              'value': excursion.ticket_num},
-            {'name': 'price', 'label': 'Цена', 'type': 'number', 'required': True, 'value': excursion.price},
+            {'name': 'price', 'label': 'Цена', 'type': 'number', 'required': True, 'step': '0.01',
+             'value': excursion.price},
             {'name': 'duration', 'label': 'Продолжительность (минуты)', 'type': 'number', 'required': True,
              'value': excursion.duration},
-            {'name': 'employee_id', 'label': 'ID сотрудника', 'type': 'number', 'required': False,
+            {'name': 'employee_id', 'label': 'ID сотрудника (необязательно)', 'type': 'number', 'required': False,
              'value': excursion.employee_id if excursion.employee else ''},
         ]
 
@@ -628,7 +715,7 @@ def excursion_update(request):
             'entity_type': 'excursion'
         })
 
-    columns = ['id', 'title', 'date', 'language']
+    columns = ['excursion_id', 'title', 'date', 'language']
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Экскурсия',
         'items': excursions,
@@ -643,7 +730,7 @@ def excursion_delete(request):
         delete_id = request.POST.get('delete_id')
         if delete_id:
             try:
-                excursion = Excursion.objects.get(id=delete_id)
+                excursion = Excursion.objects.get(excursion_id=delete_id)
                 excursion.delete()
                 messages.success(request, f'Экскурсия "{excursion.title}" успешно удалена!')
             except Excursion.DoesNotExist:
@@ -653,7 +740,7 @@ def excursion_delete(request):
             return redirect('excursion_delete')
 
     excursions = Excursion.objects.all()
-    columns = ['id', 'title', 'date', 'language']
+    columns = ['excursion_id', 'title', 'date', 'language']
 
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Экскурсия',
@@ -666,7 +753,8 @@ def excursion_delete(request):
 
 # ============= EXHIBIT CRUD =============
 def exhibit_list(request):
-    exhibits = Exhibit.objects.all()
+    # Используем правильное имя поля - mission_id
+    exhibits = Exhibit.objects.select_related('mission_id').all()
 
     filter_column = request.GET.get('filter_column', '')
     filter_value = request.GET.get('filter_value', '')
@@ -676,13 +764,39 @@ def exhibit_list(request):
         exhibits = exhibits.filter(**filter_dict)
 
     if request.GET.get('save_result'):
-        return save_query_result(list(exhibits.values()), 'exhibits_filtered')
+        data = []
+        for exhibit in exhibits:
+            data.append({
+                'exhibit_id': exhibit.exhibit_id,
+                'title': exhibit.title,
+                'description': exhibit.description,
+                'creation_date': exhibit.creation_date,
+                'country': exhibit.country,
+                'state': exhibit.state,
+                'type': exhibit.type,
+                'mission': exhibit.mission_id.title if exhibit.mission_id else None
+            })
+        return save_query_result(data, 'exhibits_filtered')
 
-    columns = ['id', 'title', 'description', 'creation_date', 'country', 'state', 'type', 'mission_id']
+    # Подготавливаем данные для отображения
+    exhibits_display = []
+    for exhibit in exhibits:
+        exhibits_display.append({
+            'exhibit_id': exhibit.exhibit_id,
+            'title': exhibit.title,
+            'description': exhibit.description,
+            'creation_date': exhibit.creation_date,
+            'country': exhibit.country,
+            'state': exhibit.state,
+            'type': exhibit.type,
+            'mission_title': exhibit.mission_id.title if exhibit.mission_id else None
+        })
+
+    columns = ['exhibit_id', 'title', 'description', 'creation_date', 'country', 'state', 'type', 'mission_id']
 
     return render(request, 'core/entity_list.html', {
         'entity_name': 'Экспонаты',
-        'items': exhibits,
+        'items': exhibits_display,
         'columns': columns,
         'entity_type': 'exhibit',
         'filter_column': filter_column,
@@ -693,28 +807,37 @@ def exhibit_list(request):
 def exhibit_add(request):
     if request.method == 'POST':
         try:
+            # Получаем максимальный ID
+            max_id = Exhibit.objects.aggregate(models.Max('exhibit_id'))['exhibit_id__max']
+            new_id = (max_id or 0) + 1
+
+            # Преобразуем строку в дату
+            creation_date = datetime.strptime(request.POST['creation_date'], '%Y-%m-%d').date()
+
+            # Валидация
+            if creation_date > date.today():
+                messages.error(request, 'Дата создания не может быть в будущем!')
+                return redirect('exhibit_add')
+
             exhibit = Exhibit(
+                exhibit_id=new_id,
                 title=request.POST['title'],
                 description=request.POST['description'],
-                creation_date=request.POST['creation_date'],
+                creation_date=creation_date,
                 country=request.POST['country'],
                 state=request.POST['state'],
                 type=request.POST['type']
             )
 
-            mission_id = request.POST.get('mission_id', '')
-            if mission_id:
+            mission_id_value = request.POST.get('mission_id', '').strip()
+            if mission_id_value:
                 try:
-                    exhibit.mission = SpaceMission.objects.get(id=mission_id)
-                except SpaceMission.DoesNotExist:
-                    messages.error(request, f'Миссия с ID {mission_id} не найдена!')
+                    # Проверяем существование миссии
+                    mission = SpaceMission.objects.get(mission_id=int(mission_id_value))
+                    exhibit.mission_id = mission  # Присваиваем объект
+                except (ValueError, SpaceMission.DoesNotExist):
+                    messages.error(request, f'Миссия с ID {mission_id_value} не найдена!')
                     return redirect('exhibit_add')
-
-            # Валидация: дата создания не может быть в будущем
-            from datetime import date
-            if exhibit.creation_date > date.today():
-                messages.error(request, 'Дата создания не может быть в будущем!')
-                return redirect('exhibit_add')
 
             exhibit.save()
             messages.success(request, 'Экспонат успешно добавлен!')
@@ -729,7 +852,7 @@ def exhibit_add(request):
         {'name': 'country', 'label': 'Страна', 'type': 'text', 'required': True},
         {'name': 'state', 'label': 'Состояние', 'type': 'text', 'required': True},
         {'name': 'type', 'label': 'Тип', 'type': 'text', 'required': True},
-        {'name': 'mission_id', 'label': 'ID миссии', 'type': 'number', 'required': False},
+        {'name': 'mission_id', 'label': 'ID миссии (необязательно)', 'type': 'number', 'required': False},
     ]
 
     return render(request, 'core/entity_form_add.html', {
@@ -745,32 +868,36 @@ def exhibit_update(request):
     selected_id = request.GET.get('id')
 
     if selected_id:
-        exhibit = get_object_or_404(Exhibit, id=selected_id)
+        exhibit = get_object_or_404(Exhibit, exhibit_id=selected_id)
 
         if request.method == 'POST':
             try:
                 exhibit.title = request.POST['title']
                 exhibit.description = request.POST['description']
-                exhibit.creation_date = request.POST['creation_date']
+
+                # Преобразуем строку в дату
+                creation_date = datetime.strptime(request.POST['creation_date'], '%Y-%m-%d').date()
+
+                # Валидация
+                if creation_date > date.today():
+                    messages.error(request, 'Дата создания не может быть в будущем!')
+                    return redirect(f'exhibit_update?id={selected_id}')
+
+                exhibit.creation_date = creation_date
                 exhibit.country = request.POST['country']
                 exhibit.state = request.POST['state']
                 exhibit.type = request.POST['type']
 
-                mission_id = request.POST.get('mission_id', '')
-                if mission_id:
+                mission_id_value = request.POST.get('mission_id', '').strip()
+                if mission_id_value:
                     try:
-                        exhibit.mission = SpaceMission.objects.get(id=mission_id)
-                    except SpaceMission.DoesNotExist:
-                        messages.error(request, f'Миссия с ID {mission_id} не найдена!')
+                        mission = SpaceMission.objects.get(mission_id=int(mission_id_value))
+                        exhibit.mission_id = mission
+                    except (ValueError, SpaceMission.DoesNotExist):
+                        messages.error(request, f'Миссия с ID {mission_id_value} не найдена!')
                         return redirect(f'exhibit_update?id={selected_id}')
                 else:
-                    exhibit.mission = None
-
-                # Валидация
-                from datetime import date
-                if exhibit.creation_date > date.today():
-                    messages.error(request, 'Дата создания не может быть в будущем!')
-                    return redirect(f'exhibit_update?id={selected_id}')
+                    exhibit.mission_id = None
 
                 exhibit.save()
                 messages.success(request, 'Экспонат успешно обновлен!')
@@ -787,8 +914,8 @@ def exhibit_update(request):
             {'name': 'country', 'label': 'Страна', 'type': 'text', 'required': True, 'value': exhibit.country},
             {'name': 'state', 'label': 'Состояние', 'type': 'text', 'required': True, 'value': exhibit.state},
             {'name': 'type', 'label': 'Тип', 'type': 'text', 'required': True, 'value': exhibit.type},
-            {'name': 'mission_id', 'label': 'ID миссии', 'type': 'number', 'required': False,
-             'value': exhibit.mission_id if exhibit.mission else ''},
+            {'name': 'mission_id', 'label': 'ID миссии (необязательно)', 'type': 'number', 'required': False,
+             'value': exhibit.mission_id.mission_id if exhibit.mission_id else ''},
         ]
 
         return render(request, 'core/entity_form_update.html', {
@@ -798,7 +925,7 @@ def exhibit_update(request):
             'entity_type': 'exhibit'
         })
 
-    columns = ['id', 'title', 'country', 'type']
+    columns = ['exhibit_id', 'title', 'country', 'type']
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Экспонат',
         'items': exhibits,
@@ -813,7 +940,7 @@ def exhibit_delete(request):
         delete_id = request.POST.get('delete_id')
         if delete_id:
             try:
-                exhibit = Exhibit.objects.get(id=delete_id)
+                exhibit = Exhibit.objects.get(exhibit_id=delete_id)
                 exhibit.delete()
                 messages.success(request, f'Экспонат "{exhibit.title}" успешно удален!')
             except Exhibit.DoesNotExist:
@@ -823,7 +950,7 @@ def exhibit_delete(request):
             return redirect('exhibit_delete')
 
     exhibits = Exhibit.objects.all()
-    columns = ['id', 'title', 'country', 'type']
+    columns = ['exhibit_id', 'title', 'country', 'type']
 
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Экспонат',
@@ -842,17 +969,40 @@ def mission_list(request):
     filter_value = request.GET.get('filter_value', '')
 
     if filter_column and filter_value:
-        filter_dict = {filter_column + '__icontains': filter_value}
-        missions = missions.filter(**filter_dict)
+        if filter_column == 'crew':
+            # Специальный фильтр для массива crew
+            missions = missions.filter(crew__contains=[filter_value])
+        else:
+            filter_dict = {filter_column + '__icontains': filter_value}
+            missions = missions.filter(**filter_dict)
 
     if request.GET.get('save_result'):
-        return save_query_result(list(missions.values()), 'missions_filtered')
+        # Преобразуем crew в строку для сохранения
+        data = list(missions.values())
+        for item in data:
+            if 'crew' in item and item['crew']:
+                item['crew'] = ', '.join(item['crew'])
+        return save_query_result(data, 'missions_filtered')
 
-    columns = ['id', 'title', 'country', 'start_date', 'end_date', 'crew', 'goal']
+    # Преобразуем crew в строку для отображения
+    missions_display = []
+    for mission in missions:
+        mission_dict = {
+            'mission_id': mission.mission_id,
+            'title': mission.title,
+            'country': mission.country,
+            'start_date': mission.start_date,
+            'end_date': mission.end_date,
+            'crew': ', '.join(mission.crew) if mission.crew else '',
+            'goal': mission.goal
+        }
+        missions_display.append(mission_dict)
+
+    columns = ['mission_id', 'title', 'country', 'start_date', 'end_date', 'crew', 'goal']
 
     return render(request, 'core/entity_list.html', {
         'entity_name': 'Космические миссии',
-        'items': missions,
+        'items': missions_display,
         'columns': columns,
         'entity_type': 'mission',
         'filter_column': filter_column,
@@ -863,19 +1013,32 @@ def mission_list(request):
 def mission_add(request):
     if request.method == 'POST':
         try:
-            mission = SpaceMission(
-                title=request.POST['title'],
-                country=request.POST['country'],
-                start_date=request.POST['start_date'],
-                end_date=request.POST['end_date'],
-                crew=request.POST['crew'],
-                goal=request.POST['goal']
-            )
+            # Получаем максимальный ID
+            max_id = SpaceMission.objects.aggregate(models.Max('mission_id'))['mission_id__max']
+            new_id = (max_id or 0) + 1
 
-            # Валидация: дата окончания не может быть раньше даты начала
-            if mission.end_date < mission.start_date:
+            # Преобразуем строки в даты
+            start_date = datetime.strptime(request.POST['start_date'], '%Y-%m-%d').date()
+            end_date = datetime.strptime(request.POST['end_date'], '%Y-%m-%d').date()
+
+            # Валидация
+            if end_date < start_date:
                 messages.error(request, 'Дата окончания не может быть раньше даты начала!')
                 return redirect('mission_add')
+
+            # Обработка экипажа - получаем массив
+            crew_list = request.POST.getlist('crew[]')
+            crew_list = [member.strip() for member in crew_list if member.strip()]  # Убираем пустые
+
+            mission = SpaceMission(
+                mission_id=new_id,
+                title=request.POST['title'],
+                country=request.POST['country'],
+                start_date=start_date,
+                end_date=end_date,
+                crew=crew_list if crew_list else [],  # Передаем как массив Python
+                goal=request.POST['goal']
+            )
 
             mission.save()
             messages.success(request, 'Космическая миссия успешно добавлена!')
@@ -883,19 +1046,9 @@ def mission_add(request):
         except Exception as e:
             messages.error(request, f'Ошибка при добавлении: {str(e)}')
 
-    fields = [
-        {'name': 'title', 'label': 'Название', 'type': 'text', 'required': True},
-        {'name': 'country', 'label': 'Страна', 'type': 'text', 'required': True},
-        {'name': 'start_date', 'label': 'Дата начала', 'type': 'date', 'required': True},
-        {'name': 'end_date', 'label': 'Дата окончания', 'type': 'date', 'required': True},
-        {'name': 'crew', 'label': 'Экипаж', 'type': 'textarea', 'required': True},
-        {'name': 'goal', 'label': 'Цель', 'type': 'text', 'required': True},
-    ]
-
-    return render(request, 'core/entity_form_add.html', {
+    return render(request, 'core/mission_form_add.html', {
         'entity_name': 'Космическая миссия',
         'operation': 'Добавить',
-        'fields': fields,
         'entity_type': 'mission'
     })
 
@@ -905,21 +1058,31 @@ def mission_update(request):
     selected_id = request.GET.get('id')
 
     if selected_id:
-        mission = get_object_or_404(SpaceMission, id=selected_id)
+        mission = get_object_or_404(SpaceMission, mission_id=selected_id)
 
         if request.method == 'POST':
             try:
                 mission.title = request.POST['title']
                 mission.country = request.POST['country']
-                mission.start_date = request.POST['start_date']
-                mission.end_date = request.POST['end_date']
-                mission.crew = request.POST['crew']
-                mission.goal = request.POST['goal']
+
+                # Преобразуем строки в даты
+                start_date = datetime.strptime(request.POST['start_date'], '%Y-%m-%d').date()
+                end_date = datetime.strptime(request.POST['end_date'], '%Y-%m-%d').date()
 
                 # Валидация
-                if mission.end_date < mission.start_date:
+                if end_date < start_date:
                     messages.error(request, 'Дата окончания не может быть раньше даты начала!')
                     return redirect(f'mission_update?id={selected_id}')
+
+                mission.start_date = start_date
+                mission.end_date = end_date
+
+                # Обработка экипажа
+                crew_list = request.POST.getlist('crew[]')
+                crew_list = [member.strip() for member in crew_list if member.strip()]
+                mission.crew = crew_list if crew_list else []
+
+                mission.goal = request.POST['goal']
 
                 mission.save()
                 messages.success(request, 'Космическая миссия успешно обновлена!')
@@ -927,25 +1090,16 @@ def mission_update(request):
             except Exception as e:
                 messages.error(request, f'Ошибка при обновлении: {str(e)}')
 
-        fields = [
-            {'name': 'title', 'label': 'Название', 'type': 'text', 'required': True, 'value': mission.title},
-            {'name': 'country', 'label': 'Страна', 'type': 'text', 'required': True, 'value': mission.country},
-            {'name': 'start_date', 'label': 'Дата начала', 'type': 'date', 'required': True,
-             'value': mission.start_date},
-            {'name': 'end_date', 'label': 'Дата окончания', 'type': 'date', 'required': True,
-             'value': mission.end_date},
-            {'name': 'crew', 'label': 'Экипаж', 'type': 'textarea', 'required': True, 'value': mission.crew},
-            {'name': 'goal', 'label': 'Цель', 'type': 'text', 'required': True, 'value': mission.goal},
-        ]
-
-        return render(request, 'core/entity_form_update.html', {
+        # Передаем текущий экипаж для отображения
+        return render(request, 'core/mission_form_update.html', {
             'entity_name': 'Космическая миссия',
             'operation': 'Обновить',
-            'fields': fields,
-            'entity_type': 'mission'
+            'entity_type': 'mission',
+            'mission': mission,
+            'crew_members': mission.crew if mission.crew else []
         })
 
-    columns = ['id', 'title', 'country', 'goal']
+    columns = ['mission_id', 'title', 'country', 'goal']
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Космическая миссия',
         'items': missions,
@@ -960,7 +1114,7 @@ def mission_delete(request):
         delete_id = request.POST.get('delete_id')
         if delete_id:
             try:
-                mission = SpaceMission.objects.get(id=delete_id)
+                mission = SpaceMission.objects.get(mission_id=delete_id)
                 mission.delete()
                 messages.success(request, f'Миссия "{mission.title}" успешно удалена!')
             except SpaceMission.DoesNotExist:
@@ -970,7 +1124,7 @@ def mission_delete(request):
             return redirect('mission_delete')
 
     missions = SpaceMission.objects.all()
-    columns = ['id', 'title', 'country', 'goal']
+    columns = ['mission_id', 'title', 'country', 'goal']
 
     return render(request, 'core/entity_select.html', {
         'entity_name': 'Космическая миссия',
@@ -995,9 +1149,8 @@ def save_query_result(data, name):
     df = pd.DataFrame(data)
 
     with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name=name[:31])  # Excel ограничение на имя листа
+        df.to_excel(writer, index=False, sheet_name=name[:31])
 
-        # Автоматическая настройка ширины колонок
         worksheet = writer.sheets[name[:31]]
         for idx, col in enumerate(df.columns):
             max_length = max(
@@ -1019,30 +1172,97 @@ def save_database_state(request):
     filename = f'backup_{timestamp}.xlsx'
     filepath = os.path.join(backup_dir, filename)
 
-    with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-        tables = {
-            'visitors': Visitor.objects.all().values(),
-            'employees': Employee.objects.all().values(),
-            'exhibitions': Exhibition.objects.all().values(),
-            'excursions': Excursion.objects.all().values(),
-            'exhibits': Exhibit.objects.all().values(),
-            'missions': SpaceMission.objects.all().values(),
-        }
+    try:
+        with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
+            # Сохраняем таблицы, обрабатывая ошибки
+            tables_saved = False
 
-        for sheet_name, data in tables.items():
-            df = pd.DataFrame(data)
-            df.to_excel(writer, sheet_name=sheet_name, index=False)
+            # Основные таблицы
+            try:
+                data = list(Visitor.objects.all().values())
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='visitors', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving visitors: {e}")
 
-            # Автоматическая настройка ширины колонок
-            worksheet = writer.sheets[sheet_name]
-            for idx, col in enumerate(df.columns):
-                max_length = max(
-                    df[col].astype(str).map(len).max() if not df.empty else 0,
-                    len(str(col))
-                ) + 2
-                worksheet.column_dimensions[openpyxl.utils.get_column_letter(idx + 1)].width = min(max_length, 50)
+            try:
+                data = list(Employee.objects.all().values())
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='employees', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving employees: {e}")
 
-    messages.success(request, f'Состояние базы данных сохранено в файл {filename}')
+            try:
+                data = list(Exhibition.objects.all().values())
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='exhibitions', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving exhibitions: {e}")
+
+            try:
+                data = list(Excursion.objects.all().values())
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='excursions', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving excursions: {e}")
+
+            try:
+                data = list(Exhibit.objects.all().values())
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='exhibits', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving exhibits: {e}")
+
+            try:
+                data = list(SpaceMission.objects.all().values())
+                if data:
+                    df = pd.DataFrame(data)
+                    # Преобразуем массив crew в строку
+                    if 'crew' in df.columns:
+                        df['crew'] = df['crew'].apply(lambda x: ', '.join(x) if x else '')
+                    df.to_excel(writer, sheet_name='space_missions', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving space_missions: {e}")
+
+            # Связующие таблицы - используем правильные поля
+            try:
+                data = list(ExcursionVisitor.objects.all().values('excursion_id', 'visitor_id'))
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='excursion_visitors', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving excursion_visitors: {e}")
+
+            try:
+                data = list(ExhibitionEmployee.objects.all().values('exhibition_id', 'employee_id'))
+                if data:
+                    df = pd.DataFrame(data)
+                    df.to_excel(writer, sheet_name='exhibition_employees', index=False)
+                    tables_saved = True
+            except Exception as e:
+                print(f"Error saving exhibition_employees: {e}")
+
+            # Если ничего не сохранилось, создаем хотя бы один лист
+            if not tables_saved:
+                df = pd.DataFrame({'info': ['База данных пуста']})
+                df.to_excel(writer, sheet_name='info', index=False)
+
+        messages.success(request, f'Состояние базы данных сохранено в файл {filename}')
+    except Exception as e:
+        messages.error(request, f'Ошибка при сохранении: {str(e)}')
+
     return redirect('home')
 
 
@@ -1160,6 +1380,7 @@ def special_queries(request):
                     FULL JOIN visitor AS v ON ev.visitor_id = v.visitor_id"""
     }
 
+    # Запросы для Лабораторной работы 6
     lab6_queries = {
         'lab6_1': """
             SELECT 

@@ -2,46 +2,124 @@
 {% extends 'core/base.html' %}
 
 {% block content %}
-<a href="{% url entity_type|add:'_update' %}" class="back-button">← Назад к списку</a>
+<a href="{% url entity_type|add:'_update' %}" class="back-button">← Назад</a>
 
-<h1 class="menu-title">Обновить {{ entity_name }}</h1>
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
 
-<form method="post" action="">
+<form method="post" class="entity-form">
     {% csrf_token %}
-    {% for field in fields %}
-    <div class="form-group">
-        <label for="{{ field.name }}_field">
-            {{ field.label }}{% if field.required %}*{% endif %}:
-        </label>
-        {% if field.type == 'textarea' %}
-            <textarea
-                name="{{ field.name }}"
-                id="{{ field.name }}_field"
-                class="form-control"
-                placeholder="Введите {{ field.label|lower }}"
-                {% if field.required %}required{% endif %}>{{ field.value }}</textarea>
-        {% else %}
-            <input
-                type="{{ field.type|default:'text' }}"
-                name="{{ field.name }}"
-                id="{{ field.name }}_field"
-                class="form-control"
-                value="{{ field.value }}"
-                placeholder="Введите {{ field.label|lower }}"
-                {% if field.type == 'number' %}step="any"{% endif %}
-                {% if field.required %}required{% endif %}>
-        {% endif %}
-    </div>
-    {% endfor %}
 
-    <button type="submit" class="btn-submit">Сохранить изменения</button>
+    {% if entity_type == 'mission' %}
+        <!-- Специальная форма для миссий -->
+        <div class="form-group">
+            <label for="title">Название:</label>
+            <input type="text" name="title" value="{{ mission.title }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="country">Страна:</label>
+            <input type="text" name="country" value="{{ mission.country }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="start_date">Дата начала:</label>
+            <input type="date" name="start_date" value="{{ mission.start_date|date:'Y-m-d' }}" required>
+        </div>
+
+        <div class="form-group">
+            <label for="end_date">Дата окончания:</label>
+            <input type="date" name="end_date" value="{{ mission.end_date|date:'Y-m-d' }}" required>
+        </div>
+
+        <div class="form-group">
+            <label>Экипаж:</label>
+            <div id="crew-container">
+                {% for member in crew_members %}
+                <div class="crew-member-row" id="crew-row-{{ forloop.counter }}">
+                    <input type="text" name="crew[]" value="{{ member }}" placeholder="ФИО члена экипажа">
+                    <button type="button" onclick="removeCrewMember({{ forloop.counter }})" class="btn-remove-crew">❌</button>
+                </div>
+                {% endfor %}
+            </div>
+            <button type="button" onclick="addCrewMember()" class="btn-add-crew">➕ Добавить члена экипажа</button>
+        </div>
+
+        <div class="form-group">
+            <label for="goal">Цель:</label>
+            <input type="text" name="goal" value="{{ mission.goal }}" required>
+        </div>
+    {% else %}
+        <!-- Обычная форма для остальных -->
+        {% for field in fields %}
+        <div class="form-group">
+            <label for="{{ field.name }}">{{ field.label }}:</label>
+            {% if field.type == 'textarea' %}
+                <textarea name="{{ field.name }}" {% if field.required %}required{% endif %}>{{ field.value|default:'' }}</textarea>
+            {% elif field.type == 'date' %}
+                <input type="date" name="{{ field.name }}" value="{{ field.value|date:'Y-m-d' }}" {% if field.required %}required{% endif %}>
+            {% else %}
+                <input type="{{ field.type }}" name="{{ field.name }}" value="{{ field.value|default:'' }}" {% if field.required %}required{% endif %}>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% endif %}
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
 </form>
 
-{% if messages %}
-    {% for message in messages %}
-        <div style="margin-top: 20px; padding: 10px; border: 1px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %}; color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};">
-            {{ message }}
-        </div>
-    {% endfor %}
+<style>
+    .crew-member-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+        align-items: center;
+    }
+    .crew-member-row input {
+        flex: 1;
+    }
+    .btn-remove-crew {
+        background: #ff0000;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 3px;
+    }
+    .btn-add-crew {
+        background: #00ff00;
+        color: black;
+        border: none;
+        padding: 8px 15px;
+        cursor: pointer;
+        border-radius: 3px;
+        margin-top: 10px;
+    }
+</style>
+
+{% if entity_type == 'mission' %}
+<script>
+    let crewCount = {{ crew_members|length|default:0 }};
+
+    function addCrewMember() {
+        if (document.getElementsByClassName('crew-member-row').length >= 20) {
+            alert('Максимум 20 членов экипажа');
+            return;
+        }
+
+        crewCount++;
+        const container = document.getElementById('crew-container');
+        const row = document.createElement('div');
+        row.className = 'crew-member-row';
+        row.id = 'crew-row-new-' + crewCount;
+        row.innerHTML = '<input type="text" name="crew[]" placeholder="ФИО члена экипажа">' +
+                       '<button type="button" onclick="removeCrewMember(\'new-' + crewCount + '\')" class="btn-remove-crew">❌</button>';
+        container.appendChild(row);
+    }
+
+    function removeCrewMember(id) {
+        const row = document.getElementById('crew-row-' + id);
+        if (row) row.remove();
+    }
+</script>
 {% endif %}
 {% endblock %}

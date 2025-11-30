@@ -1,5 +1,5 @@
 # core/models.py
-
+from django.contrib.postgres.fields import ArrayField
 from django.db import models
 
 
@@ -26,7 +26,7 @@ class SpaceMission(models.Model):
     country = models.CharField(max_length=100)
     start_date = models.DateField()
     end_date = models.DateField()
-    crew = models.TextField()
+    crew = ArrayField(models.CharField(max_length=255), blank=True, null=True, default=list)
     goal = models.CharField(max_length=200)
 
     class Meta:
@@ -79,8 +79,8 @@ class Exhibit(models.Model):
     country = models.CharField(max_length=100)
     state = models.CharField(max_length=50)
     type = models.CharField(max_length=50)
-    mission = models.ForeignKey(SpaceMission, on_delete=models.SET_NULL, null=True, blank=True, db_column='mission_id')
-    exhibition = models.ForeignKey(Exhibition, on_delete=models.SET_NULL, null=True, blank=True, db_column='exhibition_id')
+    mission_id = models.ForeignKey(SpaceMission, on_delete=models.SET_NULL, null=True, blank=True,
+                                   db_column='mission_id', related_name='exhibits')
 
     class Meta:
         db_table = 'exhibit'
@@ -107,6 +107,7 @@ class Excursion(models.Model):
     def str(self):
         return self.title
 
+# В models.py - исправленные модели связующих таблиц
 class ExcursionVisitor(models.Model):
     excursion = models.ForeignKey(Excursion, on_delete=models.CASCADE, db_column='excursion_id')
     visitor = models.ForeignKey(Visitor, on_delete=models.CASCADE, db_column='visitor_id')
@@ -114,16 +115,16 @@ class ExcursionVisitor(models.Model):
     class Meta:
         db_table = 'excursion_visitor'
         managed = False
-        unique_together = ('excursion', 'visitor')
-
+        unique_together = (('excursion', 'visitor'),)
 
 class ExhibitionEmployee(models.Model):
-    exhibition = models.ForeignKey(Exhibition, on_delete=models.CASCADE)
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
+    exhibition = models.ForeignKey(Exhibition, on_delete=models.CASCADE, db_column='exhibition_id')
+    employee = models.ForeignKey(Employee, on_delete=models.CASCADE, db_column='employee_id')
 
     class Meta:
         db_table = 'exhibition_employee'
-        unique_together = ('exhibition', 'employee')
+        managed = False
+        unique_together = (('exhibition', 'employee'),)
 
 
 class ExhibitionExcursion(models.Model):
