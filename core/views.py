@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.db import connection, transaction, models
 from django.contrib import messages
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, FileResponse
 from .models import *
 import pandas as pd
 from datetime import datetime, date
@@ -9,6 +9,9 @@ import os
 from django.conf import settings
 import openpyxl
 import openpyxl.utils
+import json
+import subprocess
+import tempfile
 
 
 
@@ -1163,108 +1166,349 @@ def save_query_result(data, name):
 
 
 def save_database_state(request):
-    """Сохранение состояния всей БД"""
+    """Страница выбора формата сохранения БД"""
+    stats = {}
+
+    with connection.cursor() as cursor:
+        # Получаем статистику
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public'
+        """)
+        stats['total_tables'] = cursor.fetchone()[0]
+
+        cursor.execute("""
+            SELECT COUNT(*) 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name NOT LIKE 'auth_%'
+            AND table_name NOT LIKE 'django_%'
+        """)
+        stats['user_tables'] = cursor.fetchone()[0]
+
+        # Подсчет общего количества записей в пользовательских таблицах
+        total_records = 0
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name NOT LIKE 'auth_%'
+            AND table_name NOT LIKE 'django_%'
+        """)
+
+        for row in cursor.fetchall():
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {row[0]}")
+                total_records += cursor.fetchone()[0]
+            except:
+                pass
+
+        stats['total_records'] = total_records
+
+        # Размер БД
+        cursor.execute("""
+            SELECT pg_size_pretty(pg_database_size(current_database()))
+        """)
+        stats['db_size'] = cursor.fetchone()[0]
+
+    return render(request, 'core/save_database.html', stats)
+
+
+def save_database_excel(request):
+    """Сохранение БД в Excel формат"""
+    if request.method != 'POST':
+        return redirect('save_database_state')
+
     backup_dir = os.path.join(settings.BASE_DIR, 'backups')
     if not os.path.exists(backup_dir):
         os.makedirs(backup_dir)
 
     timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    filename = f'backup_{timestamp}.xlsx'
+    filename = f'database_backup_{timestamp}.xlsx'
     filepath = os.path.join(backup_dir, filename)
 
     try:
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
-            # Сохраняем таблицы, обрабатывая ошибки
-            tables_saved = False
+            tables_saved = []
 
-            # Основные таблицы
-            try:
-                data = list(Visitor.objects.all().values())
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='visitors', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving visitors: {e}")
+            with connection.cursor() as cursor:
+                # Получаем список пользовательских таблиц
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name NOT LIKE 'auth_%'
+                    AND table_name NOT LIKE 'django_%'
+                    ORDER BY table_name
+                """)
 
-            try:
-                data = list(Employee.objects.all().values())
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='employees', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving employees: {e}")
+                user_tables = [row[0] for row in cursor.fetchall()]
 
-            try:
-                data = list(Exhibition.objects.all().values())
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='exhibitions', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving exhibitions: {e}")
+                # Сохраняем каждую таблицу
+                for table_name in user_tables:
+                    try:
+                        # Получаем данные из таблицы
+                        cursor.execute(f"SELECT * FROM {table_name}")
+                        columns = [desc[0] for desc in cursor.description]
+                        data = cursor.fetchall()
 
-            try:
-                data = list(Excursion.objects.all().values())
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='excursions', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving excursions: {e}")
+                        if data:
+                            df = pd.DataFrame(data, columns=columns)
 
-            try:
-                data = list(Exhibit.objects.all().values())
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='exhibits', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving exhibits: {e}")
+                            # Обработка специальных типов данных
+                            for col in df.columns:
+                                # Преобразуем списки/массивы в строки
+                                if df[col].dtype == 'object':
+                                    df[col] = df[col].apply(lambda x:
+                                                            ', '.join(x) if isinstance(x, list) else x
+                                                            )
 
-            try:
-                data = list(SpaceMission.objects.all().values())
-                if data:
-                    df = pd.DataFrame(data)
-                    # Преобразуем массив crew в строку
-                    if 'crew' in df.columns:
-                        df['crew'] = df['crew'].apply(lambda x: ', '.join(x) if x else '')
-                    df.to_excel(writer, sheet_name='space_missions', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving space_missions: {e}")
+                            # Сохраняем на отдельный лист (максимум 31 символ для имени листа)
+                            sheet_name = table_name[:31]
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-            # Связующие таблицы - используем правильные поля
-            try:
-                data = list(ExcursionVisitor.objects.all().values('excursion_id', 'visitor_id'))
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='excursion_visitors', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving excursion_visitors: {e}")
+                            # Настройка ширины колонок
+                            worksheet = writer.sheets[sheet_name]
+                            for idx, col in enumerate(df.columns):
+                                max_length = max(
+                                    df[col].astype(str).map(len).max() if not df.empty else 0,
+                                    len(str(col))
+                                ) + 2
+                                worksheet.column_dimensions[
+                                    openpyxl.utils.get_column_letter(idx + 1)
+                                ].width = min(max_length, 50)
 
-            try:
-                data = list(ExhibitionEmployee.objects.all().values('exhibition_id', 'employee_id'))
-                if data:
-                    df = pd.DataFrame(data)
-                    df.to_excel(writer, sheet_name='exhibition_employees', index=False)
-                    tables_saved = True
-            except Exception as e:
-                print(f"Error saving exhibition_employees: {e}")
+                            tables_saved.append(table_name)
+                        else:
+                            # Если таблица пустая, создаем лист с заголовками
+                            df = pd.DataFrame(columns=columns)
+                            sheet_name = table_name[:31]
+                            df.to_excel(writer, sheet_name=sheet_name, index=False)
+                            tables_saved.append(f"{table_name} (пустая)")
 
-            # Если ничего не сохранилось, создаем хотя бы один лист
-            if not tables_saved:
-                df = pd.DataFrame({'info': ['База данных пуста']})
-                df.to_excel(writer, sheet_name='info', index=False)
+                    except Exception as e:
+                        print(f"Ошибка при сохранении таблицы {table_name}: {e}")
 
-        messages.success(request, f'Состояние базы данных сохранено в файл {filename}')
+            # Добавляем информационный лист
+            info_data = {
+                'Информация': ['Дата создания', 'Количество таблиц', 'Сохраненные таблицы'],
+                'Значение': [
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    len(tables_saved),
+                    ', '.join(tables_saved)
+                ]
+            }
+            info_df = pd.DataFrame(info_data)
+            info_df.to_excel(writer, sheet_name='INFO', index=False)
+
+        # Отправляем файл пользователю
+        with open(filepath, 'rb') as file:
+            response = HttpResponse(
+                file.read(),
+                content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
     except Exception as e:
-        messages.error(request, f'Ошибка при сохранении: {str(e)}')
+        messages.error(request, f'Ошибка при создании Excel файла: {str(e)}')
+        return redirect('save_database_state')
 
-    return redirect('home')
 
+def save_database_sql(request):
+    """Сохранение БД в SQL формат"""
+    if request.method != 'POST':
+        return redirect('save_database_state')
+
+    backup_dir = os.path.join(settings.BASE_DIR, 'backups')
+    if not os.path.exists(backup_dir):
+        os.makedirs(backup_dir)
+
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    filename = f'database_dump_{timestamp}.sql'
+    filepath = os.path.join(backup_dir, filename)
+
+    try:
+        with open(filepath, 'w', encoding='utf-8') as sql_file:
+            # Заголовок файла
+            sql_file.write("-- Space Museum Database Dump\n")
+            sql_file.write(f"-- Generated: {datetime.now()}\n")
+            sql_file.write("-- Database: PostgreSQL\n\n")
+            sql_file.write("SET client_encoding = 'UTF8';\n\n")
+
+            with connection.cursor() as cursor:
+                # Получаем список пользовательских таблиц
+                cursor.execute("""
+                    SELECT table_name 
+                    FROM information_schema.tables 
+                    WHERE table_schema = 'public' 
+                    AND table_name NOT LIKE 'auth_%'
+                    AND table_name NOT LIKE 'django_%'
+                    ORDER BY table_name
+                """)
+
+                user_tables = [row[0] for row in cursor.fetchall()]
+
+                for table_name in user_tables:
+                    sql_file.write(f"\n-- Table: {table_name}\n")
+                    sql_file.write(f"-- DROP TABLE IF EXISTS {table_name} CASCADE;\n\n")
+
+                    # Получаем структуру таблицы
+                    sql_file.write(f"CREATE TABLE IF NOT EXISTS {table_name} (\n")
+
+                    cursor.execute("""
+                        SELECT 
+                            column_name,
+                            data_type,
+                            character_maximum_length,
+                            is_nullable,
+                            column_default
+                        FROM information_schema.columns
+                        WHERE table_name = %s
+                        ORDER BY ordinal_position
+                    """, [table_name])
+
+                    columns = cursor.fetchall()
+                    column_definitions = []
+
+                    for col in columns:
+                        col_def = f"    {col[0]} "
+
+                        # Тип данных
+                        if col[1] == 'character varying' and col[2]:
+                            col_def += f"VARCHAR({col[2]})"
+                        elif col[1] == 'integer':
+                            col_def += "INTEGER"
+                        elif col[1] == 'bigint':
+                            col_def += "BIGINT"
+                        elif col[1] == 'text':
+                            col_def += "TEXT"
+                        elif col[1] == 'date':
+                            col_def += "DATE"
+                        elif col[1] == 'timestamp without time zone':
+                            col_def += "TIMESTAMP"
+                        elif col[1] == 'boolean':
+                            col_def += "BOOLEAN"
+                        elif col[1] == 'ARRAY':
+                            col_def += "TEXT[]"
+                        else:
+                            col_def += col[1].upper()
+
+                        # NOT NULL
+                        if col[3] == 'NO':
+                            col_def += " NOT NULL"
+
+                        # DEFAULT
+                        if col[4]:
+                            col_def += f" DEFAULT {col[4]}"
+
+                        column_definitions.append(col_def)
+
+                    # Получаем PRIMARY KEY
+                    cursor.execute("""
+                        SELECT kcu.column_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu
+                            ON tc.constraint_name = kcu.constraint_name
+                        WHERE tc.table_name = %s 
+                        AND tc.constraint_type = 'PRIMARY KEY'
+                    """, [table_name])
+
+                    pk_columns = [row[0] for row in cursor.fetchall()]
+                    if pk_columns:
+                        column_definitions.append(
+                            f"    PRIMARY KEY ({', '.join(pk_columns)})"
+                        )
+
+                    # Получаем FOREIGN KEYS
+                    cursor.execute("""
+                        SELECT
+                            kcu.column_name,
+                            ccu.table_name AS foreign_table_name,
+                            ccu.column_name AS foreign_column_name,
+                            rc.delete_rule
+                        FROM information_schema.table_constraints AS tc
+                        JOIN information_schema.key_column_usage AS kcu
+                            ON tc.constraint_name = kcu.constraint_name
+                        JOIN information_schema.constraint_column_usage AS ccu
+                            ON ccu.constraint_name = tc.constraint_name
+                        JOIN information_schema.referential_constraints rc
+                            ON tc.constraint_name = rc.constraint_name
+                        WHERE tc.constraint_type = 'FOREIGN KEY' 
+                        AND tc.table_name = %s
+                    """, [table_name])
+
+                    for fk in cursor.fetchall():
+                        fk_def = f"    FOREIGN KEY ({fk[0]}) REFERENCES {fk[1]}({fk[2]})"
+                        if fk[3]:
+                            fk_def += f" ON DELETE {fk[3]}"
+                        column_definitions.append(fk_def)
+
+                    sql_file.write(',\n'.join(column_definitions))
+                    sql_file.write("\n);\n\n")
+
+                    # Получаем данные таблицы
+                    cursor.execute(f"SELECT * FROM {table_name}")
+                    rows = cursor.fetchall()
+
+                    if rows:
+                        columns = [desc[0] for desc in cursor.description]
+                        sql_file.write(f"-- Data for {table_name}\n")
+
+                        for row in rows:
+                            values = []
+                            for val in row:
+                                if val is None:
+                                    values.append("NULL")
+                                elif isinstance(val, bool):
+                                    values.append("TRUE" if val else "FALSE")
+                                elif isinstance(val, (int, float)):
+                                    values.append(str(val))
+                                elif isinstance(val, list):
+                                    # PostgreSQL array format
+                                    array_vals = [f"'{v}'" for v in val]
+                                    values.append("ARRAY[" + ", ".join(array_vals) + "]")
+                                elif isinstance(val, (date, datetime)):
+                                    values.append(f"'{val}'")
+                                else:
+                                    # Экранируем одинарные кавычки
+                                    escaped_val = str(val).replace("'", "''")
+                                    values.append(f"'{escaped_val}'")
+
+                            insert_sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({', '.join(values)});\n"
+                            sql_file.write(insert_sql)
+
+                        sql_file.write("\n")
+
+                # Добавляем команды для последовательностей (sequences)
+                sql_file.write("\n-- Reset sequences\n")
+                for table_name in user_tables:
+                    cursor.execute("""
+                        SELECT column_name
+                        FROM information_schema.columns
+                        WHERE table_name = %s
+                        AND column_default LIKE 'nextval%%'
+                    """, [table_name])
+
+                    for col in cursor.fetchall():
+                        sql_file.write(
+                            f"SELECT setval(pg_get_serial_sequence('{table_name}', '{col[0]}'), "
+                            f"COALESCE((SELECT MAX({col[0]}) FROM {table_name}), 1));\n"
+                        )
+
+        # Отправляем файл пользователю
+        with open(filepath, 'rb') as file:
+            response = HttpResponse(
+                file.read(),
+                content_type='application/sql'
+            )
+            response['Content-Disposition'] = f'attachment; filename="{filename}"'
+            return response
+
+    except Exception as e:
+        messages.error(request, f'Ошибка при создании SQL дампа: {str(e)}')
+        return redirect('save_database_state')
 
 def special_queries(request):
     """Страница для специальных SQL запросов"""
@@ -1557,3 +1801,275 @@ def special_queries(request):
         'selected_query': selected_query,
         'lab_type': lab_type
     })
+
+
+def table_management(request):
+    """Главная страница управления таблицами"""
+    return render(request, 'core/table_management.html')
+
+
+def table_add(request):
+    """Создание новой таблицы"""
+    if request.method == 'POST':
+        try:
+            table_name = request.POST.get('table_name')
+
+            # Валидация имени таблицы
+            if not table_name or not table_name.replace('_', '').isalnum():
+                raise ValueError("Некорректное имя таблицы")
+
+            # Построение SQL запроса
+            sql_parts = [f"CREATE TABLE {table_name} ("]
+            columns = []
+            primary_keys = []
+
+            # Обработка колонок
+            for key in request.POST:
+                if key.startswith('column_name_'):
+                    idx = key.split('_')[-1]
+                    col_name = request.POST.get(f'column_name_{idx}')
+                    col_type = request.POST.get(f'column_type_{idx}')
+
+                    if col_name and col_type:
+                        col_def = f"{col_name} {col_type}"
+
+                        # Проверка ограничений
+                        if request.POST.get(f'column_primary_{idx}'):
+                            primary_keys.append(col_name)
+
+                        if request.POST.get(f'column_notnull_{idx}'):
+                            col_def += " NOT NULL"
+
+                        if request.POST.get(f'column_unique_{idx}'):
+                            col_def += " UNIQUE"
+
+                        default_val = request.POST.get(f'column_default_{idx}')
+                        if default_val and default_val != 'NULL':
+                            col_def += f" DEFAULT {default_val}"
+
+                        columns.append(col_def)
+
+            # Добавление primary key
+            if primary_keys:
+                columns.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
+
+            # Обработка foreign keys
+            for key in request.POST:
+                if key.startswith('fk_column_'):
+                    idx = key.split('_')[-1]
+                    fk_column = request.POST.get(f'fk_column_{idx}')
+                    fk_ref_table = request.POST.get(f'fk_ref_table_{idx}')
+                    fk_ref_column = request.POST.get(f'fk_ref_column_{idx}')
+                    fk_on_delete = request.POST.get(f'fk_on_delete_{idx}', 'CASCADE')
+
+                    if fk_column and fk_ref_table and fk_ref_column:
+                        fk_def = f"FOREIGN KEY ({fk_column}) REFERENCES {fk_ref_table}({fk_ref_column}) ON DELETE {fk_on_delete}"
+                        columns.append(fk_def)
+
+            sql_parts.append(', '.join(columns))
+            sql_parts.append(')')
+
+            create_sql = ' '.join(sql_parts)
+
+            # Выполнение SQL
+            with connection.cursor() as cursor:
+                cursor.execute(create_sql)
+
+            messages.success(request, f'Таблица "{table_name}" успешно создана!')
+            return redirect('table_management')
+
+        except Exception as e:
+            messages.error(request, f'Ошибка при создании таблицы: {str(e)}')
+
+    # Получение списка существующих таблиц
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            ORDER BY table_name
+        """)
+        existing_tables = [row[0] for row in cursor.fetchall()]
+
+    return render(request, 'core/table_add.html', {
+        'existing_tables': json.dumps(existing_tables)
+    })
+
+
+def table_list(request):
+    """Список таблиц для удаления"""
+    if request.method == 'POST':
+        table_name = request.POST.get('table_name')
+        try:
+            # Проверка защищенных таблиц
+            protected_tables = ['auth_user', 'auth_group', 'django_migrations', 'django_content_type']
+            if table_name in protected_tables:
+                raise ValueError("Эта таблица защищена от удаления")
+
+            with connection.cursor() as cursor:
+                cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+
+            messages.success(request, f'Таблица "{table_name}" успешно удалена!')
+
+        except Exception as e:
+            messages.error(request, f'Ошибка при удалении таблицы: {str(e)}')
+
+        return redirect('table_list')
+
+    # Получение информации о таблицах
+    tables = []
+    with connection.cursor() as cursor:
+        # Получаем все таблицы
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name NOT LIKE 'django_%'
+            AND table_name NOT LIKE 'auth_%'
+            ORDER BY table_name
+        """)
+
+        for row in cursor.fetchall():
+            table_name = row[0]
+
+            # Получаем количество записей
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                row_count = cursor.fetchone()[0]
+            except:
+                row_count = 0
+
+            # Получаем зависимости
+            cursor.execute("""
+                SELECT DISTINCT
+                    tc.table_name AS referencing_table
+                FROM information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                JOIN information_schema.constraint_column_usage AS ccu
+                    ON ccu.constraint_name = tc.constraint_name
+                WHERE tc.constraint_type = 'FOREIGN KEY'
+                    AND ccu.table_name = %s
+            """, [table_name])
+
+            dependencies = [dep[0] for dep in cursor.fetchall()]
+
+            tables.append({
+                'name': table_name,
+                'row_count': row_count,
+                'dependencies': dependencies,
+                'has_dependencies': len(dependencies) > 0
+            })
+
+    return render(request, 'core/table_list.html', {'tables': tables})
+
+
+def table_info(request):
+    """Информация о структуре БД (только пользовательские таблицы)"""
+    tables_info = []
+
+    with connection.cursor() as cursor:
+        # Получаем только пользовательские таблицы
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name NOT LIKE 'auth_%'
+            AND table_name NOT LIKE 'django_%'
+            ORDER BY table_name
+        """)
+
+        for row in cursor.fetchall():
+            table_name = row[0]
+            table_data = {'name': table_name, 'columns': [], 'foreign_keys': []}
+
+            # Получаем количество записей
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                table_data['row_count'] = cursor.fetchone()[0]
+            except:
+                table_data['row_count'] = 0
+
+            # Получаем информацию о колонках
+            cursor.execute("""
+                SELECT 
+                    column_name,
+                    data_type,
+                    is_nullable,
+                    column_default,
+                    character_maximum_length
+                FROM information_schema.columns
+                WHERE table_name = %s
+                ORDER BY ordinal_position
+            """, [table_name])
+
+            for col in cursor.fetchall():
+                col_info = {
+                    'name': col[0],
+                    'type': col[1],
+                    'null': col[2] == 'YES',
+                    'default': col[3],
+                    'key': ''
+                }
+
+                # Определяем тип ключа
+                cursor.execute("""
+                    SELECT constraint_type
+                    FROM information_schema.key_column_usage kcu
+                    JOIN information_schema.table_constraints tc
+                        ON kcu.constraint_name = tc.constraint_name
+                    WHERE kcu.table_name = %s AND kcu.column_name = %s
+                """, [table_name, col[0]])
+
+                key_result = cursor.fetchone()
+                if key_result:
+                    if 'PRIMARY' in key_result[0]:
+                        col_info['key'] = 'PRI'
+                    elif 'FOREIGN' in key_result[0]:
+                        col_info['key'] = 'MUL'
+
+                table_data['columns'].append(col_info)
+
+            # Получаем foreign keys
+            cursor.execute("""
+                SELECT
+                    kcu.column_name,
+                    ccu.table_name AS foreign_table_name,
+                    ccu.column_name AS foreign_column_name
+                FROM information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                JOIN information_schema.constraint_column_usage AS ccu
+                    ON ccu.constraint_name = tc.constraint_name
+                WHERE tc.constraint_type = 'FOREIGN KEY' AND tc.table_name = %s
+            """, [table_name])
+
+            for fk in cursor.fetchall():
+                table_data['foreign_keys'].append({
+                    'column': fk[0],
+                    'ref_table': fk[1],
+                    'ref_column': fk[2]
+                })
+
+            tables_info.append(table_data)
+
+    return render(request, 'core/table_info.html', {'tables_info': tables_info})
+
+
+def get_table_columns(request):
+    """AJAX endpoint для получения колонок таблицы"""
+    table_name = request.GET.get('table')
+    columns = []
+
+    if table_name:
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_name = %s
+                ORDER BY ordinal_position
+            """, [table_name])
+
+            columns = [row[0] for row in cursor.fetchall()]
+
+    return JsonResponse({'columns': columns})

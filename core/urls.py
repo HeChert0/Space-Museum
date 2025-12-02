@@ -45,5 +45,16 @@ urlpatterns = [
 
     # Special queries and backup
     path('special-queries/', views.special_queries, name='special_queries'),
+    # Замените старый URL для save_database_state на эти:
     path('save-database/', views.save_database_state, name='save_database_state'),
+    path('save-database/excel/', views.save_database_excel, name='save_database_excel'),
+    path('save-database/sql/', views.save_database_sql, name='save_database_sql'),
+
+    # Table management URLs
+    path('table-management/', views.table_management, name='table_management'),
+    path('table-add/', views.table_add, name='table_add'),
+    path('table-list/', views.table_list, name='table_list'),
+    path('table-info/', views.table_info, name='table_info'),
+    path('get-table-columns/', views.get_table_columns, name='get_table_columns'),
+
 ]

@@ -1,10 +1,30 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+<!-- core/templates/core/table_management.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'home' %}" class="back-button">← Назад</a>
+
+<div class="menu-container">
+    <h1 class="menu-title">🗃️ УПРАВЛЕНИЕ ТАБЛИЦАМИ БД 🗃️</h1>
+
+    <a href="{% url 'table_add' %}" class="menu-button">
+        ➕ Создать новую таблицу
+    </a>
+
+    <a href="{% url 'table_list' %}" class="menu-button">
+        ❌ Удалить таблицу
+    </a>
+
+    <a href="{% url 'table_info' %}" class="menu-button">
+        ℹ️ Информация о таблицах
+    </a>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div style="margin-top: 20px; padding: 10px; border: 1px solid #00ff00; color: #00ff00; text-align: center;">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+{% endblock %}

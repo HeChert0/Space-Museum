@@ -1,10 +1,269 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+<!-- core/templates/core/table_add.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'table_management' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">➕ Создать новую таблицу</h1>
+
+<form method="post" class="entity-form">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="table_name">Название таблицы:</label>
+        <input type="text" name="table_name" id="table_name" required pattern="[a-z_][a-z0-9_]*"
+               title="Только строчные буквы, цифры и подчеркивания">
+    </div>
+
+    <div class="form-group">
+        <label>Колонки таблицы:</label>
+        <div id="columns-container">
+            <!-- Колонки будут добавляться сюда -->
+        </div>
+        <button type="button" onclick="addColumn()" class="btn-add-column">
+            ➕ Добавить колонку
+        </button>
+    </div>
+
+    <div class="form-group">
+        <label>Внешние ключи (Foreign Keys):</label>
+        <div id="fk-container">
+            <!-- Foreign keys будут добавляться сюда -->
+        </div>
+        <button type="button" onclick="addForeignKey()" class="btn-add-fk">
+            🔗 Добавить Foreign Key
+        </button>
+    </div>
+
+    <button type="submit" class="btn-submit">Создать таблицу</button>
+</form>
+
+<style>
+    .column-row, .fk-row {
+        background-color: #001100;
+        border: 1px solid #00ff00;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 5px;
+    }
+
+    .column-row:hover, .fk-row:hover {
+        background-color: #002200;
+    }
+
+    .column-fields, .fk-fields {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+
+    .field-group {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .field-group label {
+        color: #00ff00;
+        font-size: 12px;
+        margin-bottom: 3px;
+    }
+
+    .field-group input, .field-group select {
+        padding: 5px;
+        background-color: #000000;
+        border: 1px solid #00ff00;
+        color: #00ff00;
+        font-family: 'Courier New', monospace;
+    }
+
+    .checkbox-group {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+        width: auto;
+        margin: 0;
+    }
+
+    .btn-remove {
+        background: #ff0000;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 3px;
+        float: right;
+    }
+
+    .btn-add-column, .btn-add-fk {
+        background: #00ff00;
+        color: black;
+        border: none;
+        padding: 10px 20px;
+        cursor: pointer;
+        border-radius: 3px;
+        margin-top: 10px;
+        font-weight: bold;
+    }
+
+    .btn-add-column:hover, .btn-add-fk:hover {
+        background: #00dd00;
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+</style>
+
+<script>
+    let columnCount = 0;
+    let fkCount = 0;
+    let existingTables = {{ existing_tables|safe }};
+
+    function addColumn() {
+        columnCount++;
+        const container = document.getElementById('columns-container');
+        const columnDiv = document.createElement('div');
+        columnDiv.className = 'column-row';
+        columnDiv.id = `column-${columnCount}`;
+
+        columnDiv.innerHTML = `
+            <button type="button" onclick="removeColumn(${columnCount})" class="btn-remove">✖</button>
+            <h4 style="color: #00ff00; margin-bottom: 10px;">Колонка #${columnCount}</h4>
+            <div class="column-fields">
+                <div class="field-group">
+                    <label>Название колонки:</label>
+                    <input type="text" name="column_name_${columnCount}" required
+                           pattern="[a-z_][a-z0-9_]*">
+                </div>
+                <div class="field-group">
+                    <label>Тип данных:</label>
+                    <select name="column_type_${columnCount}" required>
+                        <option value="INTEGER">INTEGER</option>
+                        <option value="BIGINT">BIGINT</option>
+                        <option value="VARCHAR(255)">VARCHAR(255)</option>
+                        <option value="TEXT">TEXT</option>
+                        <option value="DATE">DATE</option>
+                        <option value="TIMESTAMP">TIMESTAMP</option>
+                        <option value="BOOLEAN">BOOLEAN</option>
+                        <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
+                        <option value="FLOAT">FLOAT</option>
+                        <option value="JSON">JSON</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Ограничения:</label>
+                    <div class="checkbox-group">
+                        <label><input type="checkbox" name="column_primary_${columnCount}"> PRIMARY KEY</label>
+                        <label><input type="checkbox" name="column_notnull_${columnCount}"> NOT NULL</label>
+                        <label><input type="checkbox" name="column_unique_${columnCount}"> UNIQUE</label>
+                    </div>
+                </div>
+                <div class="field-group">
+                    <label>Значение по умолчанию:</label>
+                    <input type="text" name="column_default_${columnCount}" placeholder="NULL">
+                </div>
+            </div>
+        `;
+
+        container.appendChild(columnDiv);
+
+        // Добавляем первую колонку автоматически если это первая
+        if (columnCount === 1) {
+            // Можно предзаполнить id колонку
+            document.querySelector(`input[name="column_name_1"]`).value = 'id';
+            document.querySelector(`select[name="column_type_1"]`).value = 'INTEGER';
+            document.querySelector(`input[name="column_primary_1"]`).checked = true;
+        }
+    }
+
+    function removeColumn(id) {
+        const element = document.getElementById(`column-${id}`);
+        if (element) element.remove();
+    }
+
+    function addForeignKey() {
+        fkCount++;
+        const container = document.getElementById('fk-container');
+        const fkDiv = document.createElement('div');
+        fkDiv.className = 'fk-row';
+        fkDiv.id = `fk-${fkCount}`;
+
+        let tableOptions = '<option value="">-- Выберите таблицу --</option>';
+        existingTables.forEach(table => {
+            tableOptions += `<option value="${table}">${table}</option>`;
+        });
+
+        fkDiv.innerHTML = `
+            <button type="button" onclick="removeForeignKey(${fkCount})" class="btn-remove">✖</button>
+            <h4 style="color: #00ff00; margin-bottom: 10px;">Foreign Key #${fkCount}</h4>
+            <div class="fk-fields">
+                <div class="field-group">
+                    <label>Локальная колонка:</label>
+                    <input type="text" name="fk_column_${fkCount}" required
+                           placeholder="например: user_id">
+                </div>
+                <div class="field-group">
+                    <label>Ссылается на таблицу:</label>
+                    <select name="fk_ref_table_${fkCount}" required onchange="loadTableColumns(${fkCount})">
+                        ${tableOptions}
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>Ссылается на колонку:</label>
+                    <select name="fk_ref_column_${fkCount}" id="fk_ref_column_${fkCount}" required>
+                        <option value="">-- Сначала выберите таблицу --</option>
+                    </select>
+                </div>
+                <div class="field-group">
+                    <label>При удалении:</label>
+                    <select name="fk_on_delete_${fkCount}">
+                        <option value="CASCADE">CASCADE</option>
+                        <option value="SET NULL">SET NULL</option>
+                        <option value="RESTRICT">RESTRICT</option>
+                        <option value="NO ACTION">NO ACTION</option>
+                    </select>
+                </div>
+            </div>
+        `;
+
+        container.appendChild(fkDiv);
+    }
+
+    function removeForeignKey(id) {
+        const element = document.getElementById(`fk-${id}`);
+        if (element) element.remove();
+    }
+
+    function loadTableColumns(fkId) {
+        const tableSelect = document.querySelector(`select[name="fk_ref_table_${fkId}"]`);
+        const columnSelect = document.getElementById(`fk_ref_column_${fkId}`);
+        const tableName = tableSelect.value;
+
+        if (!tableName) {
+            columnSelect.innerHTML = '<option value="">-- Сначала выберите таблицу --</option>';
+            return;
+        }
+
+        // AJAX запрос для получения колонок таблицы
+        fetch(`/get-table-columns/?table=${tableName}`)
+            .then(response => response.json())
+            .then(data => {
+                let options = '<option value="">-- Выберите колонку --</option>';
+                data.columns.forEach(col => {
+                    options += `<option value="${col}">${col}</option>`;
+                });
+                columnSelect.innerHTML = options;
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                columnSelect.innerHTML = '<option value="">Ошибка загрузки колонок</option>';
+            });
+    }
+
+    // Добавляем первую колонку при загрузке
+    window.onload = function() {
+        addColumn();
+    };
+</script>
+{% endblock %}

@@ -1,10 +1,153 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+<!-- core/templates/core/table_info.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'table_management' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">ℹ️ Информация о структуре БД</h1>
+
+<div class="info-container">
+    {% for table in tables_info %}
+    <div class="table-info-card">
+        <h2>📋 {{ table.name }}</h2>
+        <div class="info-grid">
+            <div class="info-item">
+                <span class="label">Записей:</span>
+                <span class="value">{{ table.row_count }}</span>
+            </div>
+            <div class="info-item">
+                <span class="label">Колонок:</span>
+                <span class="value">{{ table.columns|length }}</span>
+            </div>
+        </div>
+
+        <h3>Структура таблицы:</h3>
+        <table class="structure-table">
+            <thead>
+                <tr>
+                    <th>Колонка</th>
+                    <th>Тип</th>
+                    <th>Null</th>
+                    <th>Key</th>
+                    <th>Default</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for column in table.columns %}
+                <tr>
+                    <td>{{ column.name }}</td>
+                    <td>{{ column.type }}</td>
+                    <td>{{ column.null|yesno:"YES,NO" }}</td>
+                    <td>
+                        {% if column.key == 'PRI' %}
+                            <span style="color: #ffff00;">PRIMARY</span>
+                        {% elif column.key == 'MUL' %}
+                            <span style="color: #00ffff;">FOREIGN</span>
+                        {% else %}
+                            -
+                        {% endif %}
+                    </td>
+                    <td>{{ column.default|default:"-" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        {% if table.foreign_keys %}
+        <h3>Foreign Keys:</h3>
+        <ul class="fk-list">
+            {% for fk in table.foreign_keys %}
+            <li>{{ fk.column }} → {{ fk.ref_table }}.{{ fk.ref_column }}</li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+
+<style>
+    .info-container {
+        margin-top: 30px;
+    }
+
+    .table-info-card {
+        background-color: #001100;
+        border: 2px solid #00ff00;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 30px;
+    }
+
+    .table-info-card:hover {
+        background-color: #002200;
+        box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+    }
+
+    .table-info-card h2 {
+        color: #00ff00;
+        margin-bottom: 15px;
+        border-bottom: 1px solid #00ff00;
+        padding-bottom: 10px;
+    }
+
+    .table-info-card h3 {
+        color: #00ff00;
+        margin-top: 20px;
+        margin-bottom: 10px;
+        font-size: 16px;
+    }
+
+    .info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+        gap: 15px;
+        margin-bottom: 20px;
+    }
+
+    .info-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 5px 10px;
+        background-color: #000000;
+        border: 1px solid #00ff00;
+        border-radius: 3px;
+    }
+
+    .label {
+        color: #00ff00;
+        font-weight: bold;
+    }
+
+    .value {
+        color: #00ffff;
+    }
+
+    .structure-table {
+        width: 100%;
+        margin-top: 10px;
+        font-size: 14px;
+    }
+
+    .structure-table th {
+        background-color: #003300;
+        color: #00ff00;
+        padding: 8px;
+    }
+
+    .structure-table td {
+        padding: 6px 8px;
+        color: #00ff00;
+    }
+
+    .fk-list {
+        list-style: none;
+        padding-left: 20px;
+        color: #00ffff;
+    }
+
+    .fk-list li:before {
+        content: "🔗 ";
+        color: #00ff00;
+    }
+</style>
+{% endblock %}

@@ -1,10 +1,112 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>$Title$</title>
-</head>
-<body>
-$END$
-</body>
-</html>
+<!-- core/templates/core/table_list.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'table_management' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">❌ Удаление таблиц</h1>
+
+<div class="table-container">
+    <table>
+        <thead>
+            <tr>
+                <th>Название таблицы</th>
+                <th>Количество записей</th>
+                <th>Связи (Foreign Keys)</th>
+                <th>Действия</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for table in tables %}
+            <tr>
+                <td>{{ table.name }}</td>
+                <td>{{ table.row_count }}</td>
+                <td>
+                    {% if table.dependencies %}
+                        <span style="color: #ffff00;">
+                            ⚠️ Связана с: {{ table.dependencies|join:", " }}
+                        </span>
+                    {% else %}
+                        <span style="color: #00ff00;">✓ Нет зависимостей</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <form method="post" style="display: inline;"
+                          onsubmit="return confirmDelete('{{ table.name }}', {{ table.has_dependencies }})">
+                        {% csrf_token %}
+                        <input type="hidden" name="table_name" value="{{ table.name }}">
+                        <button type="submit" class="btn-delete">Удалить</button>
+                    </form>
+                </td>
+            </tr>
+            {% empty %}
+            <tr>
+                <td colspan="4" style="text-align: center;">Нет таблиц в базе данных</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="message-box {{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<style>
+    .table-container {
+        margin-top: 30px;
+    }
+
+    .btn-delete {
+        background: #ff0000;
+        color: white;
+        border: none;
+        padding: 5px 15px;
+        cursor: pointer;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+    }
+
+    .btn-delete:hover {
+        background: #cc0000;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5);
+    }
+
+    .message-box {
+        margin-top: 20px;
+        padding: 15px;
+        border: 2px solid #00ff00;
+        border-radius: 5px;
+        text-align: center;
+    }
+
+    .message-box.error {
+        border-color: #ff0000;
+        color: #ff0000;
+    }
+
+    .message-box.success {
+        border-color: #00ff00;
+        color: #00ff00;
+    }
+</style>
+
+<script>
+    function confirmDelete(tableName, hasDependencies) {
+        let message = Вы уверены, что хотите удалить таблицу "${tableName}"?;
+
+        if (hasDependencies) {
+            message += '\n\n⚠️ ВНИМАНИЕ: Эта таблица имеет связи с другими таблицами!\n';
+            message += 'Удаление может привести к каскадному удалению связанных данных.';
+        }
+
+        message += '\n\nЭто действие необратимо!';
+
+        return confirm(message);
+    }
+</script>
+{% endblock %}
