@@ -1,0 +1,132 @@
+<!-- core/templates/core/table_columns_manage.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'universal_crud' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">🔧 Управление колонками таблицы: {{ table_name }}</h1>
+
+<div class="columns-container">
+    <div class="current-columns">
+        <h2>Текущие колонки:</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Название</th>
+                    <th>Тип</th>
+                    <th>Null</th>
+                    <th>Default</th>
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for column in columns %}
+                <tr>
+                    <td>{{ column.name }}</td>
+                    <td>{{ column.type }}</td>
+                    <td>{{ column.nullable|yesno:"YES,NO" }}</td>
+                    <td>{{ column.default|default:"-" }}</td>
+                    <td>
+                        {% if not column.is_primary %}
+                        <form method="post" style="display: inline;"
+                              onsubmit="return confirm('Удалить колонку {{ column.name }}? Все данные в этой колонке будут потеряны!')">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="drop_column">
+                            <input type="hidden" name="column_name" value="{{ column.name }}">
+                            <button type="submit" class="btn-delete">❌</button>
+                        </form>
+                        {% else %}
+                        <span style="color: #ffff00;">Primary Key</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="add-column-section">
+        <h2>➕ Добавить новую колонку:</h2>
+        <form method="post" class="entity-form">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="add_column">
+
+            <div class="form-group">
+                <label for="new_column_name">Название колонки:</label>
+                <input type="text" name="new_column_name" required pattern="[a-z_][a-z0-9_]*">
+            </div>
+
+            <div class="form-group">
+                <label for="new_column_type">Тип данных:</label>
+                <select name="new_column_type" required>
+                    <option value="INTEGER">INTEGER</option>
+                    <option value="BIGINT">BIGINT</option>
+                    <option value="VARCHAR(255)">VARCHAR(255)</option>
+                    <option value="TEXT">TEXT</option>
+                    <option value="DATE">DATE</option>
+                    <option value="TIMESTAMP">TIMESTAMP</option>
+                    <option value="BOOLEAN">BOOLEAN</option>
+                    <option value="DECIMAL(10,2)">DECIMAL(10,2)</option>
+                    <option value="FLOAT">FLOAT</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" name="new_column_nullable" value="1" checked>
+                    Разрешить NULL значения
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label for="new_column_default">Значение по умолчанию:</label>
+                <input type="text" name="new_column_default" placeholder="NULL">
+            </div>
+
+            <button type="submit" class="btn-submit">Добавить колонку</button>
+        </form>
+    </div>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="message-box {{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<style>
+    .columns-container {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin-top: 30px;
+    }
+
+    .current-columns, .add-column-section {
+        background-color: #001100;
+        border: 2px solid #00ff00;
+        border-radius: 10px;
+        padding: 20px;
+    }
+
+    .current-columns h2, .add-column-section h2 {
+        color: #00ff00;
+        margin-bottom: 20px;
+    }
+
+    .btn-delete {
+        background: #ff0000;
+        color: white;
+        border: none;
+        padding: 5px 10px;
+        cursor: pointer;
+        border-radius: 3px;
+    }
+
+    .btn-delete:hover {
+        background: #cc0000;
+    }
+</style>
+{% endblock %}

@@ -57,4 +57,13 @@ urlpatterns = [
     path('table-info/', views.table_info, name='table_info'),
     path('get-table-columns/', views.get_table_columns, name='get_table_columns'),
 
+    # Добавьте эти URL
+    path('universal-crud/', views.universal_crud, name='universal_crud'),
+    path('universal-crud/operation/', views.universal_crud_operation, name='universal_crud_operation'),
+    path('restore-database/', views.restore_database, name='restore_database'),
+
+    # Добавьте эти URL
+    path('table-columns-manage/', views.table_columns_manage, name='table_columns_manage'),
+    path('table-restore-excel/', views.table_restore_excel, name='table_restore_excel'),
+
 ]

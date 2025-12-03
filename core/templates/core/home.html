@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="menu-container">
-    <h1 class="menu-title">🚀 SPACE MUSEUM DATABASE 🚀</h1>
+    <h1 class="menu-title">🚀 МУЗЕЙ КОСМОСА 🚀</h1>
 
     <a href="{% url 'entities_menu' %}" class="menu-button">
         ⚙️ Операции с сущностями
@@ -16,7 +16,9 @@
     <a href="{% url 'save_database_state' %}" class="menu-button">
         💾 Сохранить состояние БД
     </a>
-
+    <a href="{% url 'restore_database' %}" class="menu-button">
+        📥 Восстановить БД из файла
+    </a>
     <a href="{% url 'table_management' %}" class="menu-button">
         🗃️ Управление таблицами
     </a>

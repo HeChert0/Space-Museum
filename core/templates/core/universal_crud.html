@@ -1,0 +1,114 @@
+<!-- core/templates/core/universal_crud.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<div class="menu-container">
+    <h1 class="menu-title">🗂️ УНИВЕРСАЛЬНЫЕ ОПЕРАЦИИ С ТАБЛИЦАМИ</h1>
+
+    <form method="get" action="{% url 'universal_crud_operation' %}" class="entity-form">
+        <div class="form-group">
+            <label for="table">Выберите таблицу:</label>
+            <select name="table" id="table" required onchange="updateTableInfo()">
+                <option value="">-- Выберите таблицу --</option>
+                {% for table in tables %}
+                <option value="{{ table.name }}" data-records="{{ table.records }}">
+                    {{ table.name }} (записей: {{ table.records }})
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div id="table-info" style="display: none;">
+            <div class="info-box">
+                <h3>Информация о таблице:</h3>
+                <div id="table-details"></div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="operation">Выберите операцию:</label>
+            <select name="operation" id="operation" required>
+                <option value="">-- Выберите операцию --</option>
+                <option value="view">📋 Просмотр данных</option>
+                <option value="add">➕ Добавить запись</option>
+                <option value="delete">❌ Удалить запись</option>
+                <option value="export">💾 Экспорт в Excel</option>
+            </select>
+        </div>
+
+        <button type="submit" class="btn-submit">Выполнить операцию</button>
+        <div style="margin-top: 20px;">
+            <a href="{% url 'table_columns_manage' %}?table={{ table }}"
+               class="btn-columns" id="manage-columns-btn" style="display: none;">
+                🔧 Управление колонками
+            </a>
+        </div>
+    </form>
+</div>
+
+<style>
+    .info-box {
+        background-color: #001100;
+        border: 1px solid #00ff00;
+        border-radius: 5px;
+        padding: 15px;
+        margin: 20px 0;
+    }
+
+    .info-box h3 {
+        color: #00ff00;
+        margin-bottom: 10px;
+    }
+
+    #table-details {
+        color: #00ff00;
+        font-size: 14px;
+    }
+    .btn-columns {
+        background-color: #0066ff;
+        border: 2px solid #00ff00;
+        color: #00ff00;
+        padding: 12px 25px;
+        text-decoration: none;
+        display: inline-block;
+        border-radius: 3px;
+        font-family: 'Courier New', monospace;
+        transition: all 0.3s;
+    }
+
+    .btn-columns:hover {
+        background-color: #00ff00;
+        color: #000000;
+        box-shadow: 0 0 15px rgba(0, 255, 0, 0.5);
+    }
+</style>
+
+<script>
+    function updateTableInfo() {
+        const select = document.getElementById('table');
+        const infoDiv = document.getElementById('table-info');
+        const detailsDiv = document.getElementById('table-details');
+        const columnsBtn = document.getElementById('manage-columns-btn');
+
+        if (select.value) {
+            const selectedOption = select.options[select.selectedIndex];
+            const records = selectedOption.getAttribute('data-records');
+
+            detailsDiv.innerHTML = `
+                <p>📊 Количество записей: <strong>${records}</strong></p>
+                <p>🏷️ Название таблицы: <strong>${select.value}</strong></p>
+            `;
+            infoDiv.style.display = 'block';
+
+            // Показываем кнопку управления колонками и обновляем ссылку
+            columnsBtn.style.display = 'inline-block';
+            columnsBtn.href = `{% url 'table_columns_manage' %}?table=${select.value}`;
+        } else {
+            infoDiv.style.display = 'none';
+            columnsBtn.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}

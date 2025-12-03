@@ -169,3 +169,36 @@ textarea {
     min-height: 100px;
     resize: vertical;
 }
+
+/* Стили для полей ввода даты */
+input[type="date"],
+input[type="datetime-local"] {
+    background-color: #000000;
+    border: 1px solid #00ff00;
+    color: #00ff00;
+    padding: 10px;
+    font-family: 'Courier New', monospace;
+    width: 100%;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) hue-rotate(90deg) brightness(0.5) sepia(1) saturate(5);
+    cursor: pointer;
+}
+
+input[type="date"]:focus,
+input[type="datetime-local"]:focus {
+    outline: none;
+    border-color: #00ff00;
+    box-shadow: 0 0 5px rgba(0, 255, 0, 0.5);
+}
+
+/* Подсказки для полей */
+.form-group small {
+    display: block;
+    margin-top: 5px;
+    font-size: 12px;
+    color: #00ff00;
+    opacity: 0.8;
+}

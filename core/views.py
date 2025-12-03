@@ -5,11 +5,15 @@ from django.http import HttpResponse, JsonResponse, FileResponse
 from .models import *
 import pandas as pd
 from datetime import datetime, date
-import os
 from django.conf import settings
+from io import BytesIO
+import os
 import openpyxl
 import openpyxl.utils
 import json
+import numpy as np
+import pandas as pd
+import re
 import subprocess
 import tempfile
 
@@ -2073,3 +2077,930 @@ def get_table_columns(request):
             columns = [row[0] for row in cursor.fetchall()]
 
     return JsonResponse({'columns': columns})
+
+
+def table_columns_manage(request):
+    """Управление колонками таблицы"""
+    table_name = request.GET.get('table') or request.POST.get('table')
+
+    if not table_name:
+        return redirect('universal_crud')
+
+    if request.method == 'POST':
+        action = request.POST.get('action')
+
+        with connection.cursor() as cursor:
+            if action == 'add_column':
+                # Добавление колонки
+                column_name = request.POST.get('new_column_name')
+                column_type = request.POST.get('new_column_type')
+                nullable = request.POST.get('new_column_nullable')
+                default = request.POST.get('new_column_default')
+
+                sql = f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
+
+                if not nullable:
+                    sql += " NOT NULL"
+
+                if default and default != 'NULL':
+                    sql += f" DEFAULT {default}"
+
+                try:
+                    cursor.execute(sql)
+                    messages.success(request, f'Колонка {column_name} успешно добавлена')
+                except Exception as e:
+                    messages.error(request, f'Ошибка при добавлении колонки: {str(e)}')
+
+            elif action == 'drop_column':
+                # Удаление колонки
+                column_name = request.POST.get('column_name')
+
+                try:
+                    cursor.execute(f"ALTER TABLE {table_name} DROP COLUMN {column_name}")
+                    messages.success(request, f'Колонка {column_name} успешно удалена')
+                except Exception as e:
+                    messages.error(request, f'Ошибка при удалении колонки: {str(e)}')
+
+        return redirect(f"{request.path}?table={table_name}")
+
+    # Получаем информацию о колонках
+    columns = []
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT 
+                c.column_name,
+                c.data_type,
+                c.is_nullable,
+                c.column_default,
+                CASE WHEN tc.constraint_type = 'PRIMARY KEY' THEN true ELSE false END as is_primary
+            FROM information_schema.columns c
+            LEFT JOIN information_schema.key_column_usage kcu
+                ON c.table_name = kcu.table_name AND c.column_name = kcu.column_name
+            LEFT JOIN information_schema.table_constraints tc
+                ON kcu.constraint_name = tc.constraint_name AND tc.constraint_type = 'PRIMARY KEY'
+            WHERE c.table_name = %s
+            ORDER BY c.ordinal_position
+        """, [table_name])
+
+        for row in cursor.fetchall():
+            columns.append({
+                'name': row[0],
+                'type': row[1],
+                'nullable': row[2] == 'YES',
+                'default': row[3],
+                'is_primary': row[4]
+            })
+
+    return render(request, 'core/table_columns_manage.html', {
+        'table_name': table_name,
+        'columns': columns
+    })
+
+
+def table_restore_excel(request):
+    """Восстановление таблицы из Excel файла с улучшенным определением типов"""
+    if request.method == 'POST':
+        excel_file = request.FILES.get('excel_file')
+        custom_table_name = request.POST.get('table_name', '').strip()
+        replace_data = request.POST.get('replace_data')
+
+        if excel_file:
+            try:
+                # Читаем Excel файл
+                df = pd.read_excel(excel_file)
+
+                # Определяем имя таблицы
+                if custom_table_name:
+                    table_name = custom_table_name
+                else:
+                    # Используем имя листа или файла
+                    xls = pd.ExcelFile(excel_file)
+                    table_name = xls.sheet_names[0].lower().replace(' ', '_')
+
+                # Проверяем корректность имени
+                if not table_name.replace('_', '').isalnum():
+                    raise ValueError("Некорректное имя таблицы")
+
+                with connection.cursor() as cursor:
+                    # Проверяем существование таблицы
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM information_schema.tables 
+                            WHERE table_schema = 'public' 
+                            AND table_name = %s
+                        )
+                    """, [table_name])
+
+                    table_exists = cursor.fetchone()[0]
+
+                    if not table_exists:
+                        # Улучшенное определение типов данных
+                        columns_sql = []
+                        column_types = {}
+
+                        for col in df.columns:
+                            # Очищаем имя колонки
+                            col_name = col.lower().replace(' ', '_').replace('-', '_')
+
+                            # Определяем тип данных более точно
+                            sample = df[col].dropna()
+                            if sample.empty:
+                                col_type = "TEXT"
+                            else:
+                                # Проверяем на boolean
+                                unique_values = sample.unique()
+                                if len(unique_values) <= 2 and all(
+                                        str(v).lower() in ['true', 'false', '1', '0', 'yes', 'no', 'да', 'нет', '1.0',
+                                                           '0.0']
+                                        or isinstance(v, bool)
+                                        for v in unique_values
+                                ):
+                                    col_type = "BOOLEAN"
+                                # Проверяем на integer
+                                elif sample.dtype in ['int64', 'int32']:
+                                    if sample.max() > 2147483647:
+                                        col_type = "BIGINT"
+                                    else:
+                                        col_type = "INTEGER"
+                                # Проверяем на float
+                                elif sample.dtype in ['float64', 'float32']:
+                                    # Проверяем, не являются ли float на самом деле integer
+                                    if all(sample == sample.astype(int)):
+                                        col_type = "INTEGER"
+                                    else:
+                                        col_type = "DECIMAL(10,2)"
+                                # Проверяем на дату
+                                else:
+                                    try:
+                                        pd.to_datetime(sample)
+                                        # Проверяем, есть ли время
+                                        if any(pd.to_datetime(sample).dt.time != pd.Timestamp('00:00:00').time()):
+                                            col_type = "TIMESTAMP"
+                                        else:
+                                            col_type = "DATE"
+                                    except:
+                                        # Проверяем длину строк
+                                        max_len = sample.astype(str).str.len().max()
+                                        if max_len <= 255:
+                                            col_type = f"VARCHAR({min(255, max_len * 2)})"
+                                        else:
+                                            col_type = "TEXT"
+
+                            column_types[col_name] = col_type
+                            columns_sql.append(f"{col_name} {col_type}")
+
+                        # Добавляем ID если его нет
+                        if 'id' not in [c.lower() for c in df.columns]:
+                            columns_sql.insert(0, "id SERIAL PRIMARY KEY")
+                        else:
+                            # Если ID есть, делаем его PRIMARY KEY
+                            for i, col_sql in enumerate(columns_sql):
+                                if col_sql.startswith('id '):
+                                    columns_sql[i] = col_sql.replace('INTEGER', 'INTEGER PRIMARY KEY').replace('BIGINT',
+                                                                                                               'BIGINT PRIMARY KEY')
+                                    break
+
+                        create_sql = f"CREATE TABLE {table_name} ({', '.join(columns_sql)})"
+                        cursor.execute(create_sql)
+
+                        messages.info(request,
+                                      f'Таблица {table_name} создана с колонками: {", ".join(column_types.keys())}')
+
+                    elif replace_data:
+                        # Очищаем существующую таблицу
+                        cursor.execute(f"TRUNCATE TABLE {table_name} CASCADE")
+
+                    # Вставляем данные с преобразованием типов
+                    inserted_count = 0
+                    for _, row in df.iterrows():
+                        columns = []
+                        values = []
+
+                        # Если таблица была создана с ID, генерируем его
+                        if not table_exists and 'id' not in [c.lower() for c in df.columns]:
+                            cursor.execute(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table_name}")
+                            new_id = cursor.fetchone()[0]
+                            columns.append('id')
+                            values.append(new_id)
+
+                        for col in df.columns:
+                            col_name = col.lower().replace(' ', '_').replace('-', '_')
+                            value = row[col]
+
+                            if pd.notna(value):
+                                columns.append(col_name)
+
+                                # Преобразуем boolean значения
+                                if not table_exists and column_types.get(col_name) == 'BOOLEAN':
+                                    if str(value).lower() in ['true', '1', 'yes', 'да', '1.0']:
+                                        values.append(True)
+                                    else:
+                                        values.append(False)
+                                # Преобразуем integer из float
+                                elif not table_exists and 'INT' in column_types.get(col_name, ''):
+                                    values.append(int(float(value)))
+                                else:
+                                    values.append(value)
+
+                        if columns:
+                            placeholders = ', '.join(['%s'] * len(values))
+                            sql = f"INSERT INTO {table_name} ({', '.join(columns)}) VALUES ({placeholders})"
+                            cursor.execute(sql, values)
+                            inserted_count += 1
+
+                    messages.success(request, f'Успешно импортировано {inserted_count} записей в таблицу {table_name}')
+                    return redirect('table_management')
+
+            except Exception as e:
+                messages.error(request, f'Ошибка при восстановлении: {str(e)}')
+
+    return render(request, 'core/table_restore_excel.html')
+
+
+import numpy as np
+from io import BytesIO
+import re
+
+
+def restore_database(request):
+    """Умное восстановление БД из файлов"""
+    if request.method == 'POST':
+        restore_type = request.POST.get('restore_type')
+
+        if restore_type == 'excel':
+            # Восстановление из Excel
+            excel_file = request.FILES.get('excel_file')
+            restore_mode = request.POST.get('restore_mode', 'smart')
+
+            if excel_file:
+                try:
+                    # Читаем Excel файл
+                    xls = pd.ExcelFile(excel_file)
+                    restored_tables = []
+                    restored_records = {}
+                    errors = []
+
+                    with connection.cursor() as cursor:
+                        # Если режим замены - сначала удаляем таблицы
+                        if restore_mode == 'replace':
+                            tables_to_drop = []
+                            for sheet_name in xls.sheet_names:
+                                if sheet_name != 'INFO':
+                                    tables_to_drop.append(sheet_name)
+
+                            for table in reversed(tables_to_drop):
+                                try:
+                                    cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+                                except:
+                                    pass
+
+                        for sheet_name in xls.sheet_names:
+                            if sheet_name == 'INFO':
+                                continue
+
+                            try:
+                                # Проверяем существование таблицы
+                                cursor.execute("""
+                                    SELECT EXISTS (
+                                        SELECT 1 FROM information_schema.tables 
+                                        WHERE table_schema = 'public' 
+                                        AND table_name = %s
+                                    )
+                                """, [sheet_name])
+
+                                table_exists = cursor.fetchone()[0]
+                                df = pd.read_excel(xls, sheet_name)
+
+                                # Конвертируем numpy типы в Python типы
+                                def convert_value(value, col_name=None):
+                                    """Конвертирует numpy и pandas типы в Python типы"""
+                                    if pd.isna(value):
+                                        return None
+                                    elif isinstance(value, (np.int64, np.int32, np.int16)):
+                                        return int(value)
+                                    elif isinstance(value, (np.float64, np.float32)):
+                                        if value == int(value):
+                                            return int(value)
+                                        return float(value)
+                                    elif isinstance(value, np.bool_):
+                                        return bool(value)
+                                    elif isinstance(value, pd.Timestamp):
+                                        return value.to_pydatetime()
+                                    elif isinstance(value, str):
+                                        # Проверяем, не является ли это неправильно сохраненным массивом
+                                        # Если каждый символ через запятую - это баг
+                                        if value.count(',') == len(value) // 2 and len(value) > 10:
+                                            # Убираем запятые между буквами
+                                            fixed_value = value.replace(', ', '')
+                                            # Проверяем, не нужно ли это сохранить как массив
+                                            if col_name and (
+                                                    'crew' in col_name.lower() or 'members' in col_name.lower()):
+                                                # Разбиваем по реальным разделителям (если они есть)
+                                                if ';' in fixed_value:
+                                                    items = fixed_value.split(';')
+                                                elif ',' in fixed_value and not value.count(',') == len(value) // 2:
+                                                    items = fixed_value.split(',')
+                                                else:
+                                                    # Считаем что это один элемент
+                                                    items = [fixed_value]
+                                                return '{' + ','.join(f'"{item.strip()}"' for item in items) + '}'
+                                            return fixed_value
+                                        # Проверяем на нормальный массив PostgreSQL
+                                        elif value.startswith('{') and value.endswith('}'):
+                                            return value
+                                        # Проверяем, не список ли это через запятую
+                                        elif col_name and ('crew' in col_name.lower() or 'members' in col_name.lower()):
+                                            if ',' in value and not value.startswith('{'):
+                                                items = value.split(',')
+                                                return '{' + ','.join(f'"{item.strip()}"' for item in items) + '}'
+                                        return value
+                                    else:
+                                        return value
+
+                                if not table_exists:
+                                    # Создаем таблицу с правильными ограничениями
+                                    columns_sql = []
+                                    column_types = {}
+                                    primary_key = None
+
+                                    for col in df.columns:
+                                        col_name = col.lower()
+
+                                        # Определяем тип данных
+                                        sample = df[col].dropna()
+                                        if sample.empty:
+                                            col_type = "TEXT"
+                                        else:
+                                            first_val = sample.iloc[0]
+
+                                            # Проверяем на массив или crew_members
+                                            if col_name in ['crew_members', 'crew'] or 'crew' in col_name:
+                                                col_type = "TEXT[]"
+                                            elif isinstance(first_val, str) and first_val.startswith(
+                                                    '{') and first_val.endswith('}'):
+                                                col_type = "TEXT[]"
+                                            elif sample.dtype == 'bool':
+                                                col_type = "BOOLEAN"
+                                            elif sample.dtype in ['int64', 'int32']:
+                                                col_type = "INTEGER"
+                                            elif sample.dtype in ['float64', 'float32']:
+                                                if all(sample == sample.astype(int)):
+                                                    col_type = "INTEGER"
+                                                else:
+                                                    col_type = "DECIMAL(10,2)"
+                                            else:
+                                                try:
+                                                    pd.to_datetime(sample)
+                                                    if any('T' in str(v) or ':' in str(v) for v in sample.head(10)):
+                                                        col_type = "TIMESTAMP"
+                                                    else:
+                                                        col_type = "DATE"
+                                                except:
+                                                    max_len = sample.astype(str).str.len().max()
+                                                    if max_len <= 255:
+                                                        col_type = "VARCHAR(255)"
+                                                    else:
+                                                        col_type = "TEXT"
+
+                                        column_types[col_name] = col_type
+
+                                        # Определяем primary key
+                                        if col_name == f"{sheet_name}_id" or (col_name == 'id' and not primary_key):
+                                            columns_sql.append(f"{col_name} {col_type} PRIMARY KEY")
+                                            primary_key = col_name
+                                        else:
+                                            columns_sql.append(f"{col_name} {col_type}")
+
+                                    # Создаем таблицу
+                                    create_sql = f"CREATE TABLE {sheet_name} ({', '.join(columns_sql)})"
+                                    cursor.execute(create_sql)
+
+                                    # Восстанавливаем foreign keys если возможно
+                                    for col in df.columns:
+                                        col_name = col.lower()
+                                        if col_name.endswith('_id') and col_name != f"{sheet_name}_id":
+                                            # Определяем таблицу по имени колонки
+                                            ref_table = col_name[:-3]  # убираем _id
+
+                                            # Проверяем существует ли таблица
+                                            cursor.execute("""
+                                                SELECT EXISTS (
+                                                    SELECT 1 FROM information_schema.tables 
+                                                    WHERE table_schema = 'public' 
+                                                    AND table_name = %s
+                                                )
+                                            """, [ref_table])
+
+                                            if cursor.fetchone()[0]:
+                                                try:
+                                                    alter_sql = f"""
+                                                        ALTER TABLE {sheet_name} 
+                                                        ADD CONSTRAINT fk_{sheet_name}_{col_name}
+                                                        FOREIGN KEY ({col_name}) 
+                                                        REFERENCES {ref_table}({col_name})
+                                                        ON DELETE CASCADE
+                                                    """
+                                                    cursor.execute(alter_sql)
+                                                except:
+                                                    pass  # Игнорируем если не удалось создать FK
+
+                                    restored_tables.append(sheet_name)
+
+                                # Восстанавливаем данные
+                                if restore_mode == 'replace' and table_exists:
+                                    cursor.execute(f"TRUNCATE TABLE {sheet_name} CASCADE")
+
+                                # Получаем primary key колонку
+                                cursor.execute("""
+                                    SELECT kcu.column_name
+                                    FROM information_schema.table_constraints tc
+                                    JOIN information_schema.key_column_usage kcu
+                                        ON tc.constraint_name = kcu.constraint_name
+                                    WHERE tc.table_name = %s 
+                                    AND tc.constraint_type = 'PRIMARY KEY'
+                                """, [sheet_name])
+
+                                pk_result = cursor.fetchone()
+                                pk_column = pk_result[0] if pk_result else None
+
+                                # В умном режиме получаем ВСЕ существующие записи для проверки дубликатов
+                                existing_records = set()
+                                if restore_mode == 'smart' and table_exists:
+                                    # Получаем все колонки для полной проверки
+                                    cursor.execute(f"SELECT * FROM {sheet_name}")
+                                    existing_data = cursor.fetchall()
+
+                                    # Создаем хеш каждой записи для проверки полных дубликатов
+                                    for row in existing_data:
+                                        # Создаем строку из всех значений для сравнения
+                                        row_hash = tuple(str(v) for v in row)
+                                        existing_records.add(row_hash)
+
+                                # Вставляем данные
+                                inserted = 0
+                                skipped = 0
+
+                                for _, row in df.iterrows():
+                                    # В умном режиме проверяем на полный дубликат
+                                    if restore_mode == 'smart' and table_exists:
+                                        # Создаем хеш текущей строки
+                                        row_values = []
+                                        for col in df.columns:
+                                            value = convert_value(row[col], col.lower())
+                                            row_values.append(str(value) if value is not None else 'None')
+
+                                        row_hash = tuple(row_values)
+
+                                        # Проверяем, не существует ли уже такая запись
+                                        if row_hash in existing_records:
+                                            skipped += 1
+                                            continue
+
+                                        # Также проверяем по primary key
+                                        if pk_column:
+                                            pk_col_upper = pk_column.upper()
+                                            pk_col_lower = pk_column.lower()
+
+                                            # Ищем значение PK в разных вариантах написания
+                                            pk_value = None
+                                            if pk_col_upper in row.index:
+                                                pk_value = convert_value(row[pk_col_upper])
+                                            elif pk_col_lower in row.index:
+                                                pk_value = convert_value(row[pk_col_lower])
+                                            elif pk_column in row.index:
+                                                pk_value = convert_value(row[pk_column])
+
+                                            if pk_value:
+                                                # Проверяем существование по PK
+                                                cursor.execute(f"SELECT 1 FROM {sheet_name} WHERE {pk_column} = %s",
+                                                               [pk_value])
+                                                if cursor.fetchone():
+                                                    skipped += 1
+                                                    continue
+
+                                    columns = []
+                                    values = []
+
+                                    for col in df.columns:
+                                        col_name = col.lower()
+                                        value = row[col]
+
+                                        if pd.notna(value):
+                                            columns.append(col_name)
+                                            converted_value = convert_value(value, col_name)
+                                            values.append(converted_value)
+
+                                    if columns:
+                                        placeholders = ', '.join(['%s'] * len(values))
+                                        sql = f"INSERT INTO {sheet_name} ({', '.join(columns)}) VALUES ({placeholders})"
+
+                                        try:
+                                            cursor.execute(sql, values)
+                                            inserted += 1
+
+                                            # Добавляем новую запись в existing_records
+                                            if restore_mode == 'smart':
+                                                row_values = []
+                                                for col in df.columns:
+                                                    value = convert_value(row[col], col.lower())
+                                                    row_values.append(str(value) if value is not None else 'None')
+                                                existing_records.add(tuple(row_values))
+
+                                        except Exception as e:
+                                            if 'duplicate key' in str(e):
+                                                skipped += 1
+                                            elif restore_mode != 'smart':
+                                                raise e
+                                            else:
+                                                skipped += 1
+
+                                restored_records[sheet_name] = {'inserted': inserted, 'skipped': skipped}
+
+                            except Exception as e:
+                                errors.append(f"{sheet_name}: {str(e)}")
+
+                    # Формируем отчет
+                    if restored_tables:
+                        messages.success(request, f'Созданы таблицы: {", ".join(restored_tables)}')
+
+                    for table, stats in restored_records.items():
+                        if stats['inserted'] > 0:
+                            msg = f'{table}: добавлено {stats["inserted"]} записей'
+                            if stats['skipped'] > 0:
+                                msg += f', пропущено {stats["skipped"]} (уже существуют)'
+                            messages.info(request, msg)
+                        elif stats['skipped'] > 0:
+                            messages.info(request, f'{table}: все {stats["skipped"]} записей уже существуют')
+
+                    if errors:
+                        for error in errors:
+                            messages.warning(request, f'Предупреждение: {error}')
+
+                    if not errors or restored_records:
+                        messages.success(request, 'Восстановление завершено!')
+
+                except Exception as e:
+                    messages.error(request, f'Критическая ошибка: {str(e)}')
+
+        elif restore_type == 'sql':
+            # SQL восстановление остается таким же, но добавим восстановление FK
+            sql_file = request.FILES.get('sql_file')
+            restore_mode = request.POST.get('restore_mode', 'smart')
+
+            if sql_file:
+                try:
+                    sql_content = sql_file.read().decode('utf-8')
+
+                    with connection.cursor() as cursor:
+                        if restore_mode == 'replace':
+                            cursor.execute("""
+                                SELECT table_name 
+                                FROM information_schema.tables 
+                                WHERE table_schema = 'public' 
+                                AND table_name NOT LIKE 'auth_%'
+                                AND table_name NOT LIKE 'django_%'
+                            """)
+
+                            tables = [row[0] for row in cursor.fetchall()]
+                            for table in reversed(tables):
+                                try:
+                                    cursor.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+                                except:
+                                    pass
+
+                        # Выполняем SQL команды
+                        commands = []
+                        current_command = []
+
+                        for line in sql_content.split('\n'):
+                            if line.strip().startswith('--'):
+                                continue
+
+                            current_command.append(line)
+
+                            if line.rstrip().endswith(';'):
+                                commands.append('\n'.join(current_command))
+                                current_command = []
+
+                        if current_command:
+                            commands.append('\n'.join(current_command))
+
+                        success_count = 0
+                        error_count = 0
+
+                        for command in commands:
+                            command = command.strip()
+                            if not command or command.startswith('--'):
+                                continue
+
+                            try:
+                                cursor.execute(command)
+                                success_count += 1
+                            except Exception as e:
+                                error_count += 1
+                                if restore_mode != 'smart':
+                                    raise e
+
+                        if error_count > 0 and restore_mode == 'smart':
+                            messages.warning(request, f'Выполнено {success_count} команд, пропущено {error_count}')
+                        else:
+                            messages.success(request, f'База данных восстановлена! Выполнено {success_count} команд')
+
+                except Exception as e:
+                    messages.error(request, f'Ошибка при восстановлении из SQL: {str(e)}')
+
+    return render(request, 'core/restore_database.html')
+
+def universal_crud(request):
+    """Выбор таблицы для универсальных операций"""
+    tables = []
+
+    with connection.cursor() as cursor:
+        # Получаем все пользовательские таблицы
+        cursor.execute("""
+            SELECT table_name 
+            FROM information_schema.tables 
+            WHERE table_schema = 'public' 
+            AND table_name NOT LIKE 'auth_%'
+            AND table_name NOT LIKE 'django_%'
+            ORDER BY table_name
+        """)
+
+        for row in cursor.fetchall():
+            table_name = row[0]
+            # Получаем количество записей
+            try:
+                cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+                record_count = cursor.fetchone()[0]
+            except:
+                record_count = 0
+
+            tables.append({
+                'name': table_name,
+                'records': record_count
+            })
+
+    return render(request, 'core/universal_crud.html', {'tables': tables})
+
+
+def universal_crud_operation(request):
+    """Универсальные CRUD операции для любой таблицы"""
+    table_name = request.GET.get('table') or request.POST.get('table')
+    operation = request.GET.get('operation') or request.POST.get('operation')
+
+    if not table_name or not operation:
+        return redirect('universal_crud')
+
+    # Защита от SQL инъекций - проверяем существование таблицы
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = %s
+            )
+        """, [table_name])
+
+        if not cursor.fetchone()[0]:
+            messages.error(request, 'Таблица не найдена')
+            return redirect('universal_crud')
+
+    # Обработка экспорта в Excel
+    if operation == 'export':
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute(f"SELECT * FROM {table_name}")
+                columns = [desc[0] for desc in cursor.description]
+                data = cursor.fetchall()
+
+                # Создаем DataFrame
+                df = pd.DataFrame(data, columns=columns)
+
+                # Создаем Excel файл в памяти
+                output = BytesIO()
+                with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                    df.to_excel(writer, sheet_name=table_name[:31], index=False)
+
+                    # Настройка ширины колонок
+                    worksheet = writer.sheets[table_name[:31]]
+                    for idx, col in enumerate(df.columns):
+                        max_length = max(
+                            df[col].astype(str).map(len).max() if not df.empty else 0,
+                            len(str(col))
+                        ) + 2
+                        worksheet.column_dimensions[
+                            openpyxl.utils.get_column_letter(idx + 1)
+                        ].width = min(max_length, 50)
+
+                output.seek(0)
+
+                # Отправляем файл
+                response = HttpResponse(
+                    output.read(),
+                    content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                )
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                response['Content-Disposition'] = f'attachment; filename="{table_name}_{timestamp}.xlsx"'
+                return response
+
+        except Exception as e:
+            messages.error(request, f'Ошибка при экспорте: {str(e)}')
+            return redirect('universal_crud')
+
+    context = {
+        'table_name': table_name,
+        'operation': operation
+    }
+
+    with connection.cursor() as cursor:
+        # Получаем информацию о колонках
+        cursor.execute("""
+            SELECT 
+                column_name,
+                data_type,
+                is_nullable,
+                column_default
+            FROM information_schema.columns
+            WHERE table_name = %s
+            ORDER BY ordinal_position
+        """, [table_name])
+
+        columns_info = cursor.fetchall()
+        columns = [col[0] for col in columns_info]
+        context['columns'] = columns
+
+        # Обработка POST запросов
+        if request.method == 'POST':
+            action = request.POST.get('action')
+
+            if action == 'add':
+                # Добавление записи с автоматической генерацией ID
+                fields = []
+                values = []
+                placeholders = []
+
+                # Находим primary key колонку
+                cursor.execute("""
+                    SELECT kcu.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                    WHERE tc.table_name = %s 
+                    AND tc.constraint_type = 'PRIMARY KEY'
+                """, [table_name])
+
+                pk_result = cursor.fetchone()
+                pk_column = pk_result[0] if pk_result else None
+
+                # Если есть primary key и это integer тип, генерируем новый ID
+                if pk_column:
+                    for col in columns_info:
+                        if col[0] == pk_column and ('int' in col[1] or 'serial' in col[1]):
+                            # Получаем максимальный ID
+                            cursor.execute(f"SELECT MAX({pk_column}) FROM {table_name}")
+                            max_id = cursor.fetchone()[0]
+                            new_id = (max_id or 0) + 1
+                            fields.append(pk_column)
+                            values.append(new_id)
+                            placeholders.append('%s')
+                            break
+
+                # Обрабатываем остальные поля
+                for col in columns_info:
+                    col_name = col[0]
+                    # Пропускаем primary key, если уже добавили
+                    if col_name != pk_column and col_name in request.POST and request.POST[col_name]:
+                        fields.append(col_name)
+                        values.append(request.POST[col_name])
+                        placeholders.append('%s')
+
+                if fields:
+                    sql = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
+                    try:
+                        cursor.execute(sql, values)
+                        messages.success(request, 'Запись успешно добавлена')
+                        return redirect(f"{request.path}?table={table_name}&operation=view")
+                    except Exception as e:
+                        messages.error(request, f'Ошибка: {str(e)}')
+
+            elif action == 'update':
+                # Обновление записи
+                record_id = request.POST.get('record_id')
+                if record_id:
+                    set_clause = []
+                    values = []
+
+                    for col in columns_info:
+                        col_name = col[0]
+                        if col_name in request.POST and col_name != columns[0]:  # Не обновляем ID
+                            set_clause.append(f"{col_name} = %s")
+                            values.append(request.POST[col_name] or None)
+
+                    if set_clause:
+                        values.append(record_id)
+                        sql = f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE {columns[0]} = %s"
+                        try:
+                            cursor.execute(sql, values)
+                            messages.success(request, 'Запись успешно обновлена')
+                            return redirect(f"{request.path}?table={table_name}&operation=view")
+                        except Exception as e:
+                            messages.error(request, f'Ошибка: {str(e)}')
+
+            elif action == 'delete':
+                # Удаление одной записи
+                record_id = request.POST.get('record_id')
+                if record_id:
+                    sql = f"DELETE FROM {table_name} WHERE {columns[0]} = %s"
+                    try:
+                        cursor.execute(sql, [record_id])
+                        messages.success(request, 'Запись успешно удалена')
+                    except Exception as e:
+                        messages.error(request, f'Ошибка: {str(e)}')
+
+            elif action == 'delete_multiple':
+                # Удаление нескольких записей
+                delete_ids = request.POST.getlist('delete_ids')
+                if delete_ids:
+                    placeholders = ', '.join(['%s'] * len(delete_ids))
+                    sql = f"DELETE FROM {table_name} WHERE {columns[0]} IN ({placeholders})"
+                    try:
+                        cursor.execute(sql, delete_ids)
+                        messages.success(request, f'Удалено записей: {len(delete_ids)}')
+                    except Exception as e:
+                        messages.error(request, f'Ошибка: {str(e)}')
+
+        # Обработка операций просмотра
+        if operation == 'view' or operation == 'delete':
+            # Фильтрация
+            filter_column = request.GET.get('filter_column')
+            filter_value = request.GET.get('filter_value')
+
+            sql = f"SELECT * FROM {table_name}"
+            params = []
+
+            if filter_column and filter_value and filter_column in columns:
+                sql += f" WHERE {filter_column} LIKE %s"
+                params.append(f'%{filter_value}%')
+
+            sql += " ORDER BY " + columns[0]
+
+            cursor.execute(sql, params)
+            context['data'] = cursor.fetchall()
+            context['filter_column'] = filter_column
+            context['filter_value'] = filter_value
+
+        elif operation == 'add':
+            # Подготовка полей для добавления (исключаем ID с автоинкрементом)
+            fields = []
+
+            # Находим primary key
+            cursor.execute("""
+                SELECT kcu.column_name
+                FROM information_schema.table_constraints tc
+                JOIN information_schema.key_column_usage kcu
+                    ON tc.constraint_name = kcu.constraint_name
+                WHERE tc.table_name = %s 
+                AND tc.constraint_type = 'PRIMARY KEY'
+            """, [table_name])
+
+            pk_result = cursor.fetchone()
+            pk_column = pk_result[0] if pk_result else None
+
+            for col in columns_info:
+                # Пропускаем ID колонку, если она primary key и integer
+                if pk_column and col[0] == pk_column and ('int' in col[1] or 'serial' in col[1]):
+                    continue
+
+                fields.append({
+                    'name': col[0],
+                    'type': col[1],
+                    'nullable': col[2] == 'YES'
+                })
+            context['fields'] = fields
+
+        elif operation == 'update':
+            # Получение записи для обновления
+            record_id = request.GET.get('id')
+            if record_id:
+                sql = f"SELECT * FROM {table_name} WHERE {columns[0]} = %s"
+                cursor.execute(sql, [record_id])
+                record = cursor.fetchone()
+
+                if record:
+                    fields = []
+                    for i, col in enumerate(columns_info):
+                        # Не позволяем редактировать ID
+                        if i == 0:
+                            continue
+
+                        fields.append({
+                            'name': col[0],
+                            'type': col[1],
+                            'nullable': col[2] == 'YES',
+                            'value': record[i] if record else None
+                        })
+                    context['fields'] = fields
+                    context['record'] = record
+                    context['record_id'] = record_id
+
+    return render(request, 'core/universal_crud_operation.html', context)

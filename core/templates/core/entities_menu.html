@@ -2,37 +2,74 @@
 {% extends 'core/base.html' %}
 
 {% block content %}
-<a href="{% url 'home' %}" class="back-button">← Назад в меню</a>
+<a href="{% url 'home' %}" class="back-button">← Назад</a>
 
 <div class="menu-container">
-    <h1 class="menu-title">ОПЕРАЦИИ С СУЩНОСТЯМИ</h1>
+    <h1 class="menu-title">⚙️ ОПЕРАЦИИ С СУЩНОСТЯМИ ⚙️</h1>
 
-    <form method="get">
-        <div class="form-group">
-            <label>Выберите сущность:</label>
-            <select name="entity" required>
-                <option value="">-- Выберите --</option>
-                <option value="visitor">Посетители</option>
-                <option value="employee">Сотрудники</option>
-                <option value="exhibition">Выставки</option>
-                <option value="excursion">Экскурсии</option>
-                <option value="exhibit">Экспонаты</option>
-                <option value="mission">Космические миссии</option>
-            </select>
-        </div>
+    <!-- Статические сущности -->
+    <div class="entities-section">
+        <h2 style="color: #00ff00; text-align: center; margin-bottom: 20px;">
+            📌 Основные сущности
+        </h2>
 
-        <div class="form-group">
-            <label>Выберите операцию:</label>
-            <select name="operation" required>
-                <option value="">-- Выберите --</option>
-                <option value="view">Просмотреть</option>
-                <option value="add">Добавить</option>
-                <option value="update">Обновить</option>
-                <option value="delete">Удалить</option>
-            </select>
-        </div>
+        <form method="get" class="entity-form">
+            <div class="form-group">
+                <label for="entity">Выберите сущность:</label>
+                <select name="entity" id="entity" required>
+                    <option value="">-- Выберите --</option>
+                    <option value="visitor">Посетители</option>
+                    <option value="employee">Сотрудники</option>
+                    <option value="exhibition">Выставки</option>
+                    <option value="excursion">Экскурсии</option>
+                    <option value="exhibit">Экспонаты</option>
+                    <option value="mission">Космические миссии</option>
+                </select>
+            </div>
 
-        <button type="submit" class="btn-submit">Применить</button>
-    </form>
+            <div class="form-group">
+                <label for="operation">Выберите операцию:</label>
+                <select name="operation" id="operation" required>
+                    <option value="">-- Выберите --</option>
+                    <option value="view">📋 Просмотр</option>
+                    <option value="add">➕ Добавление</option>
+                    <option value="update">✏️ Обновление</option>
+                    <option value="delete">❌ Удаление</option>
+                </select>
+            </div>
+
+            <button type="submit" class="btn-submit">Выполнить</button>
+        </form>
+    </div>
+
+    <!-- Универсальный CRUD для всех таблиц -->
+    <div class="universal-crud-section">
+        <h2 style="color: #00ff00; text-align: center; margin: 30px 0 20px 0;">
+            🔧 Универсальные операции
+        </h2>
+
+        <a href="{% url 'universal_crud' %}" class="menu-button">
+            🗂️ Работа со всеми таблицами БД
+        </a>
+
+        <p style="text-align: center; color: #00ff00; margin-top: 15px; font-size: 14px;">
+            Включая новые созданные таблицы
+        </p>
+    </div>
 </div>
+
+<style>
+    .entities-section, .universal-crud-section {
+        background-color: #001100;
+        border: 2px solid #00ff00;
+        border-radius: 10px;
+        padding: 25px;
+        margin-bottom: 30px;
+    }
+
+    .entities-section:hover, .universal-crud-section:hover {
+        background-color: #002200;
+        box-shadow: 0 0 15px rgba(0, 255, 0, 0.3);
+    }
+</style>
 {% endblock %}

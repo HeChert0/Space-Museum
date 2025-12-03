@@ -1,0 +1,287 @@
+<!-- core/templates/core/universal_crud_operation.html -->
+{% extends 'core/base.html' %}
+{% load custom_filters %}
+
+{% block content %}
+<a href="{% url 'universal_crud' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">
+    {% if operation == 'view' %}📋 Просмотр таблицы: {{ table_name }}
+    {% elif operation == 'add' %}➕ Добавление записи в: {{ table_name }}
+    {% elif operation == 'update' %}✏️ Изменение записи в: {{ table_name }}
+    {% elif operation == 'delete' %}❌ Удаление записи из: {{ table_name }}
+    {% endif %}
+</h1>
+
+{% if operation == 'view' %}
+    <!-- Просмотр данных -->
+    <div class="table-container">
+        <div class="filter-section">
+            <form method="get" class="filter-form">
+                <input type="hidden" name="table" value="{{ table_name }}">
+                <input type="hidden" name="operation" value="view">
+                <select name="filter_column">
+                    <option value="">-- Фильтр по колонке --</option>
+                    {% for col in columns %}
+                    <option value="{{ col }}" {% if col == filter_column %}selected{% endif %}>{{ col }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text" name="filter_value" value="{{ filter_value }}" placeholder="Значение фильтра">
+                <button type="submit">Применить фильтр</button>
+                {% if filter_column %}
+                <a href="?table={{ table_name }}&operation=view" class="btn-clear">Очистить</a>
+                {% endif %}
+            </form>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    {% for col in columns %}
+                    <th>{{ col }}</th>
+                    {% endfor %}
+                    <th>Действия</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in data %}
+                <tr>
+                    {% for value in row %}
+                    <td>{{ value|format_array|default:"-" }}</td>
+                    {% endfor %}
+                    <td>
+                        <a href="?table={{ table_name }}&operation=update&id={{ row.0 }}" class="btn-action btn-edit">✏️</a>
+                        <form method="post" style="display: inline;" onsubmit="return confirm('Удалить запись?')">
+                            {% csrf_token %}
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="record_id" value="{{ row.0 }}">
+                            <button type="submit" class="btn-action btn-delete">❌</button>
+                        </form>
+                    </td>
+                </tr>
+                {% empty %}
+                <tr>
+                    <td colspan="{{ columns|length|add:1 }}" style="text-align: center;">
+                        Нет данных
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+{% elif operation == 'add' %}
+    <!-- Добавление записи -->
+    <form method="post" class="entity-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="add">
+
+        {% for field in fields %}
+        <div class="form-group">
+            <label for="{{ field.name }}">
+                {{ field.name }}
+                {% if field.type %}({{ field.type }}){% endif %}
+                {% if not field.nullable %}<span style="color: red;">*</span>{% endif %}
+            </label>
+
+            {% if field.type == 'text' or field.type == 'character varying' %}
+                <textarea name="{{ field.name }}" {% if not field.nullable %}required{% endif %}></textarea>
+            {% elif field.type == 'integer' or field.type == 'bigint' %}
+                <input type="number" name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+            {% elif field.type == 'date' %}
+                <input type="date" name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+            {% elif field.type == 'boolean' %}
+                <select name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+                    <option value="true">Да</option>
+                    <option value="false">Нет</option>
+                </select>
+            {% else %}
+                <input type="text" name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <button type="submit" class="btn-submit">Добавить запись</button>
+    </form>
+
+{% elif operation == 'update' %}
+    <!-- Изменение записи -->
+    {% if record %}
+    <form method="post" class="entity-form">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="update">
+        <input type="hidden" name="record_id" value="{{ record_id }}">
+
+        {% for field in fields %}
+        <div class="form-group">
+            <label for="{{ field.name }}">
+                {{ field.name }}
+                {% if not field.nullable %}<span style="color: red;">*</span>{% endif %}
+            </label>
+
+            {% if field.type == 'text' or field.type == 'character varying' %}
+                <textarea name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>{{ field.value|default:"" }}</textarea>
+            {% elif field.type == 'integer' or field.type == 'bigint' %}
+                <input type="number" name="{{ field.name }}" value="{{ field.value|default:"" }}" {% if not field.nullable %}required{% endif %}>
+            {% elif field.type == 'date' %}
+                <input type="date" name="{{ field.name }}" value="{{ field.value|default:"" }}" {% if not field.nullable %}required{% endif %}>
+            {% elif field.type == 'boolean' %}
+                <select name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+                    <option value="true" {% if field.value %}selected{% endif %}>Да</option>
+                    <option value="false" {% if not field.value %}selected{% endif %}>Нет</option>
+                </select>
+            {% else %}
+                <input type="text" name="{{ field.name }}" value="{{ field.value|default:"" }}" {% if not field.nullable %}required{% endif %}>
+            {% endif %}
+        </div>
+        {% endfor %}
+
+        <button type="submit" class="btn-submit">Сохранить изменения</button>
+    </form>
+    {% else %}
+        <p>Запись не найдена</p>
+    {% endif %}
+
+{% elif operation == 'delete' %}
+    <!-- Удаление записи -->
+    <div class="table-container">
+        <p style="color: #ffff00; margin-bottom: 20px;">
+            ⚠️ Выберите записи для удаления:
+        </p>
+
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_multiple">
+
+            <table>
+                <thead>
+                    <tr>
+                        <th><input type="checkbox" onclick="toggleAll(this)"></th>
+                        {% for col in columns %}
+                        <th>{{ col }}</th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for row in data %}
+                    <tr>
+                        <td><input type="checkbox" name="delete_ids" value="{{ row.0 }}"></td>
+                        {% for value in row %}
+                        <td>{{ value|default:"-" }}</td>
+                        {% endfor %}
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="{{ columns|length|add:1 }}">Нет данных</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+
+            <button type="submit" class="btn-submit" onclick="return confirm('Удалить выбранные записи?')">
+                Удалить выбранные
+            </button>
+        </form>
+    </div>
+{% endif %}
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="message-box {{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<!-- Замените стили в universal_crud_operation.html -->
+<style>
+    .filter-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        background-color: #001100;
+        border: 1px solid #00ff00;
+        border-radius: 5px;
+    }
+
+    .filter-form {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .filter-form select, .filter-form input {
+        padding: 8px 12px;
+        background-color: #000000;
+        border: 1px solid #00ff00;
+        color: #00ff00;
+        font-family: 'Courier New', monospace;
+    }
+
+    .filter-form button {
+        padding: 8px 20px;
+        background-color: #001100;
+        border: 2px solid #00ff00;
+        color: #00ff00;
+        cursor: pointer;
+        font-family: 'Courier New', monospace;
+        transition: all 0.3s;
+    }
+
+    .filter-form button:hover {
+        background-color: #00ff00;
+        color: #000000;
+    }
+
+    .btn-action {
+        padding: 5px 10px;
+        margin: 0 2px;
+        text-decoration: none;
+        border-radius: 3px;
+        display: inline-block;
+        border: none;
+        cursor: pointer;
+        font-size: 14px;
+    }
+
+    .btn-edit {
+        background-color: #0066ff;
+        color: white;
+    }
+
+    .btn-delete {
+        background-color: #ff0000;
+        color: white;
+    }
+
+    .btn-edit:hover {
+        background-color: #0099ff;
+    }
+
+    .btn-delete:hover {
+        background-color: #cc0000;
+    }
+
+    .btn-clear {
+        padding: 8px 15px;
+        background-color: #ff6600;
+        color: white;
+        text-decoration: none;
+        border-radius: 3px;
+        transition: all 0.3s;
+    }
+
+    .btn-clear:hover {
+        background-color: #ff8800;
+    }
+</style>
+
+<script>
+    function toggleAll(source) {
+        checkboxes = document.getElementsByName('delete_ids');
+        for(var i=0; i<checkboxes.length; i++) {
+            checkboxes[i].checked = source.checked;
+        }
+    }
+</script>
+{% endblock %}
