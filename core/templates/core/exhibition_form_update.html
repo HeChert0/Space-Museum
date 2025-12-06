@@ -1,0 +1,104 @@
+<!-- core/templates/core/exhibition_form_update.html -->
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<a href="{% url 'exhibition_update' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" class="entity-form" id="exhibitionForm">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="title">Название: <span class="required">*</span></label>
+        <input type="text" name="title" id="title" required
+               value="{{ fields_data.exhibition.title }}"
+               placeholder="Название выставки" maxlength="50">
+        <small>Только буквы, 2-50 символов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="theme">Тема: <span class="required">*</span></label>
+        <input type="text" name="theme" id="theme" required
+               value="{{ fields_data.exhibition.theme }}"
+               placeholder="Тема выставки" maxlength="50">
+        <small>Только буквы, 2-50 символов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="start_date">Дата начала: <span class="required">*</span></label>
+        <input type="text" name="start_date" id="start_date" required
+               value="{{ fields_data.exhibition.start_date|date:'d.m.Y' }}"
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="end_date">Дата окончания: <span class="required">*</span></label>
+        <input type="text" name="end_date" id="end_date" required
+               value="{{ fields_data.exhibition.end_date|date:'d.m.Y' }}"
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="location">Место проведения: <span class="required">*</span></label>
+        <select name="location" id="location" required>
+            <option value="">-- Выберите место --</option>
+            {% for loc in fields_data.locations %}
+            <option value="{{ loc }}" {% if loc == fields_data.exhibition.location %}selected{% endif %}>
+                {{ loc }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="type">Тип выставки: <span class="required">*</span></label>
+        <select name="type" id="type" required>
+            <option value="">-- Выберите тип --</option>
+            {% for t in fields_data.types %}
+            <option value="{{ t }}" {% if t == fields_data.exhibition.type %}selected{% endif %}>
+                {{ t }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+<style>
+    .required { color: #ff0000; }
+    .error-field {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
+    }
+    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+</style>
+
+<script src="{% static 'core/js/validation.js' %}"></script>
+<script>
+    // Валидация текстовых полей только с буквами
+    document.getElementById('title').addEventListener('input', function() {
+        validateTextField(this, 2, 50, false);
+    });
+
+    document.getElementById('theme').addEventListener('input', function() {
+        validateTextField(this, 2, 50, false);
+    });
+</script>
+{% endblock %}

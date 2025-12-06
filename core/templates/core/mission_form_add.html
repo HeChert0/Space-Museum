@@ -1,6 +1,7 @@
 <!-- core/templates/core/mission_form_add.html -->
 {% extends 'core/base.html' %}
 {% load static %}
+{% load custom_filters %}
 
 {% block content %}
 <a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
@@ -51,28 +52,30 @@
         <label for="start_date">Дата начала: <span class="required">*</span></label>
         <input type="text" name="start_date" id="start_date" required
                value="{{ fields_data.form_data.start_date|default:'' }}"
-               {% if fields_data.error_field == 'start_date' %}class="error-field"{% endif %}
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+               {% if fields_data.error_field == 'start_date' %}class="error-field date-input"{% else %}class="date-input"{% endif %}
+               placeholder="ДД.ММ.ГГГГ" maxlength="10">
     </div>
 
     <div class="form-group">
         <label for="end_date">Дата окончания:</label>
         <input type="text" name="end_date" id="end_date"
                value="{{ fields_data.form_data.end_date|default:'' }}"
-               {% if fields_data.error_field == 'end_date' %}class="error-field"{% endif %}
-               class="date-input" placeholder="ДД.ММ.ГГГГ или оставьте пустым" maxlength="10">
+               {% if fields_data.error_field == 'end_date' %}class="error-field date-input"{% else %}class="date-input"{% endif %}
+               placeholder="ДД.ММ.ГГГГ или оставьте пустым" maxlength="10">
         <small>Можно оставить пустым для текущих миссий</small>
     </div>
 
     <div class="form-group">
         <label>Экипаж:</label>
         <div id="crew-container" {% if fields_data.error_field == 'crew' %}class="error-field"{% endif %}>
-            {% for member in fields_data.form_data.crew %}
-            <div class="crew-member-row">
-                <input type="text" name="crew[]" value="{{ member }}" placeholder="ФИО члена экипажа">
-                <button type="button" onclick="removeCrewMember(this)" class="btn-remove-crew">❌</button>
-            </div>
-            {% endfor %}
+            {% if fields_data.form_data.crew %}
+                {% for member in fields_data.form_data.crew %}
+                <div class="crew-member-row">
+                    <input type="text" name="crew[]" value="{{ member }}" placeholder="ФИО члена экипажа">
+                    <button type="button" onclick="removeCrewMember(this)" class="btn-remove-crew">❌</button>
+                </div>
+                {% endfor %}
+            {% endif %}
         </div>
         <button type="button" onclick="addCrewMember()" class="btn-add-crew">➕ Добавить члена экипажа</button>
     </div>
@@ -100,10 +103,20 @@
         align-items: center;
         gap: 5px;
     }
+    .crew-member-row {
+        display: flex;
+        gap: 10px;
+        margin-bottom: 10px;
+    }
+    .crew-member-row input {
+        flex: 1;
+    }
     .error-field {
         border-color: #ff0000 !important;
         box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
     }
+    .required { color: #ff0000; }
+    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
@@ -126,10 +139,18 @@
         button.parentElement.remove();
     }
 
-    // Счетчик символов для цели
-    document.getElementById('goal').addEventListener('input', function() {
-        const left = 100 - this.value.length;
-        document.getElementById('goalCharsLeft').textContent = left;
+    // Счетчик символов для цели - исправленный
+    document.addEventListener('DOMContentLoaded', function() {
+        const goalField = document.getElementById('goal');
+        const counter = document.getElementById('goalCharsLeft');
+
+        // Инициализация счетчика
+        counter.textContent = 100 - goalField.value.length;
+
+        // Обновление при вводе
+        goalField.addEventListener('input', function() {
+            counter.textContent = 100 - this.value.length;
+        });
     });
 
     // Проверка количества выбранных стран

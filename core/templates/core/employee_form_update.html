@@ -1,6 +1,7 @@
 <!-- core/templates/core/employee_form_update.html -->
 {% extends 'core/base.html' %}
 {% load static %}
+{% load custom_filters %}
 
 {% block content %}
 <a href="{% url 'employee_update' %}" class="back-button">← Назад</a>
@@ -48,12 +49,9 @@
         <label for="position">Должность: <span class="required">*</span></label>
         <select name="position" id="position" required>
             <option value="">-- Выберите должность --</option>
-            {% for pos in fields_data.positions_by_department|get_item:fields_data.employee.department %}
-            <option value="{{ pos }}" {% if pos == fields_data.employee.position %}selected{% endif %}>
-                {{ pos }}
-            </option>
-            {% endfor %}
         </select>
+        <input type="hidden" id="current_position" value="{{ fields_data.employee.position }}">
+        <input type="hidden" id="current_department" value="{{ fields_data.employee.department }}">
     </div>
 
     <div class="form-group">
@@ -72,7 +70,8 @@
             </select>
             <input type="tel" name="phone_number" id="phone_number" required
                    value="{{ fields_data.phone_number }}"
-                   placeholder="Номер телефона" maxlength="10">
+                   placeholder="Номер телефона"
+                   maxlength="{% if fields_data.phone_code == '+375' %}9{% else %}10{% endif %}">
         </div>
         <small id="phone_hint">
             {% if fields_data.phone_code == '+375' %}
@@ -107,9 +106,9 @@
 <script>
     const positionsByDepartment = {{ fields_data.positions_by_department|safe }};
 
-    document.getElementById('department').addEventListener('change', function() {
+    function updatePositions(departmentValue, selectedPosition) {
         const positionSelect = document.getElementById('position');
-        const positions = positionsByDepartment[this.value] || [];
+        const positions = positionsByDepartment[departmentValue] || [];
 
         positionSelect.innerHTML = '<option value="">-- Выберите должность --</option>';
 
@@ -119,11 +118,28 @@
                 const option = document.createElement('option');
                 option.value = pos;
                 option.textContent = pos;
+                if (pos === selectedPosition) {
+                    option.selected = true;
+                }
                 positionSelect.appendChild(option);
             });
         } else {
             positionSelect.disabled = true;
         }
+    }
+
+    // При загрузке страницы устанавливаем текущую должность
+    document.addEventListener('DOMContentLoaded', function() {
+        const currentDepartment = document.getElementById('current_department').value;
+        const currentPosition = document.getElementById('current_position').value;
+
+        if (currentDepartment) {
+            updatePositions(currentDepartment, currentPosition);
+        }
+    });
+
+    document.getElementById('department').addEventListener('change', function() {
+        updatePositions(this.value, null);
     });
 
     document.getElementById('phone_code').addEventListener('change', function() {

@@ -1,0 +1,118 @@
+<!-- core/templates/core/excursion_form_update.html -->
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<a href="{% url 'excursion_update' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" class="entity-form" id="excursionForm">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="title">Название: <span class="required">*</span></label>
+        <input type="text" name="title" id="title" required
+               value="{{ fields_data.excursion.title }}"
+               placeholder="Название экскурсии" maxlength="50">
+        <small>Только буквы, 2-50 символов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="date">Дата проведения: <span class="required">*</span></label>
+        <input type="text" name="date" id="date" required
+               value="{{ fields_data.excursion.date|date:'d.m.Y' }}"
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="language">Язык: <span class="required">*</span></label>
+        <select name="language" id="language" required>
+            <option value="">-- Выберите язык --</option>
+            {% for lang in fields_data.languages %}
+            <option value="{{ lang }}" {% if lang == fields_data.excursion.language %}selected{% endif %}>
+                {{ lang }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="ticket_num">Количество билетов: <span class="required">*</span></label>
+        <input type="number" name="ticket_num" id="ticket_num" required
+               value="{{ fields_data.excursion.ticket_num }}"
+               min="10" max="100" placeholder="10-100">
+        <small>От 10 до 100 билетов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="price">Цена: <span class="required">*</span></label>
+        <input type="number" name="price" id="price" required
+               value="{{ fields_data.excursion.price }}"
+               min="20" max="300" step="0.01" placeholder="20-300">
+        <small>От 20 до 300 рублей</small>
+    </div>
+
+    <div class="form-group">
+        <label for="duration">Продолжительность (минуты): <span class="required">*</span></label>
+        <input type="number" name="duration" id="duration" required
+               value="{{ fields_data.excursion.duration }}"
+               min="30" max="180" placeholder="30-180">
+        <small>От 30 до 180 минут</small>
+    </div>
+
+    <div class="form-group">
+        <label for="employee_id">Экскурсовод:</label>
+        <select name="employee_id" id="employee_id">
+            <option value="">-- Не назначен --</option>
+            {% for guide in fields_data.tour_guides %}
+            <option value="{{ guide.employee_id }}"
+                    {% if fields_data.excursion.employee and guide.employee_id == fields_data.excursion.employee.employee_id %}selected{% endif %}>
+                [ID: {{ guide.employee_id }}] {{ guide.full_name }} - {{ guide.position }}
+            </option>
+            {% endfor %}
+        </select>
+        <small>Выберите экскурсовода (необязательно)</small>
+    </div>
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+<style>
+    .required { color: #ff0000; }
+    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+</style>
+
+<script src="{% static 'core/js/validation.js' %}"></script>
+<script>
+    document.getElementById('title').addEventListener('input', function() {
+        validateTextField(this, 2, 50, false);
+    });
+
+    document.getElementById('ticket_num').addEventListener('input', function() {
+        validateNumberField(this, 10, 100);
+    });
+
+    document.getElementById('price').addEventListener('input', function() {
+        validatePrice(this, 20, 300);
+    });
+
+    document.getElementById('duration').addEventListener('input', function() {
+        validateNumberField(this, 30, 180);
+    });
+</script>
+{% endblock %}

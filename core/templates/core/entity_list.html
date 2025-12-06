@@ -99,7 +99,7 @@
                         {% if col == 'exhibit_id' %}{{ item.exhibit_id }}
                         {% elif col == 'title' %}{{ item.title }}
                         {% elif col == 'description' %}{{ item.description|truncatechars:100 }}
-                        {% elif col == 'creation_date' %}{{ item.creation_date }}
+                        {% elif col == 'creation_date' %}{{ item.creation_date|format_date }}
                         {% elif col == 'country' %}{{ item.country }}
                         {% elif col == 'state' %}{{ item.state }}
                         {% elif col == 'type' %}{{ item.type }}
@@ -109,7 +109,7 @@
                     {% elif entity_type == 'excursion' %}
                         {% if col == 'excursion_id' %}{{ item.excursion_id }}
                         {% elif col == 'title' %}{{ item.title }}
-                        {% elif col == 'date' %}{{ item.date }}
+                        {% elif col == 'date' %}{{ item.date|format_date }}
                         {% elif col == 'language' %}{{ item.language }}
                         {% elif col == 'ticket_num' %}{{ item.ticket_num }}
                         {% elif col == 'price' %}{{ item.price }}
@@ -121,14 +121,36 @@
                         {% if col == 'mission_id' %}{{ item.mission_id }}
                         {% elif col == 'title' %}{{ item.title }}
                         {% elif col == 'country' %}{{ item.country }}
-                        {% elif col == 'start_date' %}{{ item.start_date }}
-                        {% elif col == 'end_date' %}{{ item.end_date }}
+                        {% elif col == 'start_date' %}{{ item.start_date|format_date }}
+                        {% elif col == 'end_date' %}{{ item.end_date|format_date }}
                         {% elif col == 'crew' %}{{ item.crew|truncatechars:50 }}
                         {% elif col == 'goal' %}{{ item.goal }}
                         {% else %}{{ item|get_item:col|default:"—" }}
                         {% endif %}
+                    {% elif entity_type == 'visitor' %}
+                        {% if col == 'birth_date' %}{{ item|get_item:col|format_date }}
+                        {% elif col == 'visit_date' %}{{ item|get_item:col|format_date }}
+                        {% else %}{{ item|get_item:col|default:"—" }}
+                        {% endif %}
+                    {% elif entity_type == 'employee' %}
+                        {% if col == 'hire_date' %}{{ item|get_item:col|format_date }}
+                        {% elif col == 'phone' %}{{ item|get_item:col|format_phone }}
+                        {% else %}{{ item|get_item:col|default:"—" }}
+                        {% endif %}
+                    {% elif entity_type == 'exhibition' %}
+                        {% if col == 'start_date' %}{{ item|get_item:col|format_date }}
+                        {% elif col == 'end_date' %}{{ item|get_item:col|format_date }}
+                        {% else %}{{ item|get_item:col|default:"—" }}
+                        {% endif %}
                     {% else %}
-                        {{ item|get_item:col|default:"—" }}
+                        <!-- Для всех остальных сущностей проверяем, является ли поле датой -->
+                        {% with value=item|get_item:col %}
+                            {% if 'date' in col %}
+                                {{ value|format_date }}
+                            {% else %}
+                                {{ value|default:"—" }}
+                            {% endif %}
+                        {% endwith %}
                     {% endif %}
                 </td>
                 {% endfor %}

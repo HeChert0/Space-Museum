@@ -1,0 +1,131 @@
+<!-- core/templates/core/excursion_form_add.html -->
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" class="entity-form" id="excursionForm">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="title">Название: <span class="required">*</span></label>
+        <input type="text" name="title" id="title" required
+               value="{{ fields_data.form_data.title|default:'' }}"
+               {% if fields_data.error_field == 'title' %}class="error-field"{% endif %}
+               placeholder="Название экскурсии" maxlength="50">
+        <small>Только буквы, 2-50 символов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="date">Дата проведения: <span class="required">*</span></label>
+        <input type="text" name="date" id="date" required
+               value="{{ fields_data.form_data.date|default:'' }}"
+               {% if fields_data.error_field == 'date' %}class="error-field date-input"{% else %}class="date-input"{% endif %}
+               placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="language">Язык: <span class="required">*</span></label>
+        <select name="language" id="language" required
+                {% if fields_data.error_field == 'language' %}class="error-field"{% endif %}>
+            <option value="">-- Выберите язык --</option>
+            {% for lang in fields_data.languages %}
+            <option value="{{ lang }}" {% if lang == fields_data.form_data.language %}selected{% endif %}>
+                {{ lang }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="ticket_num">Количество билетов: <span class="required">*</span></label>
+        <input type="number" name="ticket_num" id="ticket_num" required
+               value="{{ fields_data.form_data.ticket_num|default:'' }}"
+               {% if fields_data.error_field == 'ticket_num' %}class="error-field"{% endif %}
+               min="10" max="100" placeholder="10-100">
+        <small>От 10 до 100 билетов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="price">Цена: <span class="required">*</span></label>
+        <input type="number" name="price" id="price" required
+               value="{{ fields_data.form_data.price|default:'' }}"
+               {% if fields_data.error_field == 'price' %}class="error-field"{% endif %}
+               min="20" max="300" step="0.01" placeholder="20-300">
+        <small>От 20 до 300 рублей</small>
+    </div>
+
+    <div class="form-group">
+        <label for="duration">Продолжительность (минуты): <span class="required">*</span></label>
+        <input type="number" name="duration" id="duration" required
+               value="{{ fields_data.form_data.duration|default:'' }}"
+               {% if fields_data.error_field == 'duration' %}class="error-field"{% endif %}
+               min="30" max="180" placeholder="30-180">
+        <small>От 30 до 180 минут</small>
+    </div>
+
+    <div class="form-group">
+        <label for="employee_id">Экскурсовод:</label>
+        <select name="employee_id" id="employee_id"
+                {% if fields_data.error_field == 'employee_id' %}class="error-field"{% endif %}>
+            <option value="">-- Не назначен --</option>
+            {% for guide in fields_data.tour_guides %}
+            <option value="{{ guide.employee_id }}"
+                    {% if guide.employee_id|stringformat:"s" == fields_data.form_data.employee_id %}selected{% endif %}>
+                [ID: {{ guide.employee_id }}] {{ guide.full_name }} - {{ guide.position }}
+            </option>
+            {% endfor %}
+        </select>
+        <small>Выберите экскурсовода (необязательно)</small>
+    </div>
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+<style>
+    .required { color: #ff0000; }
+    .error-field {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
+    }
+    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+</style>
+
+<script src="{% static 'core/js/validation.js' %}"></script>
+<script>
+    // Валидация названия
+    document.getElementById('title').addEventListener('input', function() {
+        validateTextField(this, 2, 50, false);
+    });
+
+    // Валидация числовых полей
+    document.getElementById('ticket_num').addEventListener('input', function() {
+        validateNumberField(this, 10, 100);
+    });
+
+    document.getElementById('price').addEventListener('input', function() {
+        validatePrice(this, 20, 300);
+    });
+
+    document.getElementById('duration').addEventListener('input', function() {
+        validateNumberField(this, 30, 180);
+    });
+</script>
+{% endblock %}

@@ -7,9 +7,27 @@ import re
 
 register = template.Library()
 
+
 @register.filter
-def get_item(dictionary, key):
-    return getattr(dictionary, key, '')
+def get_item(obj, key):
+    """Получить атрибут объекта или элемент словаря по ключу"""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(key)
+    try:
+        return getattr(obj, key, None)
+    except:
+        return None
+
+
+@register.filter
+def length(value):
+    """Получить длину значения"""
+    if value is None:
+        return 0
+    return len(str(value))
+
 
 @register.filter
 def dict_get(dict_obj, key):
@@ -112,3 +130,20 @@ def format_for_input(value, field_type):
             return value
 
     return value
+
+
+@register.filter
+def format_phone(value):
+    """Форматирует телефонные номера, убирая лишние символы"""
+    if value is None:
+        return ''
+
+    value_str = str(value)
+
+    # Если строка начинается с +, это телефон - убираем все кроме цифр и +
+    if value_str.startswith('+'):
+        # Сохраняем + в начале и убираем все нецифровые символы
+        cleaned = '+' + ''.join(filter(str.isdigit, value_str[1:]))
+        return cleaned
+
+    return value_str
