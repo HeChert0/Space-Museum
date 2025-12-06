@@ -1,0 +1,98 @@
+<!-- core/templates/core/exhibition_form_add.html -->
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" class="entity-form" id="exhibitionForm">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="title">Название: <span class="required">*</span></label>
+        <input type="text" name="title" id="title" required
+               value="{{ fields_data.form_data.title|default:'' }}"
+               {% if fields_data.error_field == 'title' %}class="error-field"{% endif %}
+               placeholder="Название выставки" maxlength="50">
+        <small>Только буквы, 2-50 символов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="theme">Тема: <span class="required">*</span></label>
+        <input type="text" name="theme" id="theme" required
+               value="{{ fields_data.form_data.theme|default:'' }}"
+               {% if fields_data.error_field == 'theme' %}class="error-field"{% endif %}
+               placeholder="Тема выставки" maxlength="50">
+        <small>Только буквы, 2-50 символов</small>
+    </div>
+
+    <div class="form-group">
+        <label for="start_date">Дата начала: <span class="required">*</span></label>
+        <input type="text" name="start_date" id="start_date" required
+               value="{{ fields_data.form_data.start_date|default:'' }}"
+               {% if fields_data.error_field == 'start_date' %}class="error-field"{% endif %}
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="end_date">Дата окончания: <span class="required">*</span></label>
+        <input type="text" name="end_date" id="end_date" required
+               value="{{ fields_data.form_data.end_date|default:'' }}"
+               {% if fields_data.error_field == 'end_date' %}class="error-field"{% endif %}
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="location">Место проведения: <span class="required">*</span></label>
+        <select name="location" id="location" required
+                {% if fields_data.error_field == 'location' %}class="error-field"{% endif %}>
+            <option value="">-- Выберите место --</option>
+            {% for loc in fields_data.locations %}
+            <option value="{{ loc }}" {% if loc == fields_data.form_data.location %}selected{% endif %}>
+                {{ loc }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="type">Тип выставки: <span class="required">*</span></label>
+        <select name="type" id="type" required
+                {% if fields_data.error_field == 'type' %}class="error-field"{% endif %}>
+            <option value="">-- Выберите тип --</option>
+            {% for t in fields_data.types %}
+            <option value="{{ t }}" {% if t == fields_data.form_data.type %}selected{% endif %}>
+                {{ t }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+<style>
+    .error-field {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
+    }
+</style>
+
+<script src="{% static 'core/js/validation.js' %}"></script>
+{% endblock %}

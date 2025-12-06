@@ -1,0 +1,84 @@
+<!-- core/templates/core/visitor_form_update.html -->
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<a href="{% url 'visitor_update' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+<form method="post" class="entity-form" id="visitorForm">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="full_name">ФИО: <span class="required">*</span></label>
+        <input type="text" name="full_name" id="full_name" required
+               value="{{ fields_data.visitor.full_name }}"
+               placeholder="Иванов Иван Иванович" maxlength="50">
+        <small>Минимум имя и фамилия, только буквы</small>
+    </div>
+
+    <div class="form-group">
+        <label for="birth_date">Дата рождения: <span class="required">*</span></label>
+        <input type="text" name="birth_date" id="birth_date" required
+               value="{{ fields_data.visitor.birth_date|date:'d.m.Y' }}"
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="citizenship">Гражданство: <span class="required">*</span></label>
+        <select name="citizenship" id="citizenship" required>
+            <option value="">-- Выберите страну --</option>
+            {% for country in fields_data.countries %}
+            <option value="{{ country }}" {% if country == fields_data.visitor.citizenship %}selected{% endif %}>
+                {{ country }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="ticket_type">Тип билета: <span class="required">*</span></label>
+        <select name="ticket_type" id="ticket_type" required>
+            <option value="">-- Выберите тип --</option>
+            {% for ticket in fields_data.ticket_types %}
+            <option value="{{ ticket }}" {% if ticket == fields_data.visitor.ticket_type %}selected{% endif %}>
+                {{ ticket }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="visit_date">Дата посещения: <span class="required">*</span></label>
+        <input type="text" name="visit_date" id="visit_date" required
+               value="{{ fields_data.visitor.visit_date|date:'d.m.Y' }}"
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label for="review">Отзыв:</label>
+        <textarea name="review" id="review" maxlength="100"
+                  placeholder="Ваш отзыв (необязательно, до 100 символов)">{{ fields_data.visitor.review|default:'' }}</textarea>
+        <small>Осталось символов: <span id="reviewCharsLeft">{{ 100|add:'-'|add:fields_data.visitor.review|length|default:100 }}</span></small>
+    </div>
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+<style>
+    .required { color: #ff0000; }
+    .field-error { color: #ff0000; font-size: 12px; margin-top: 5px; }
+    input:invalid, select:invalid { border-color: #ff0000; }
+    input:valid, select:valid { border-color: #00ff00; }
+    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+</style>
+
+<script src="{% static 'core/js/validation.js' %}"></script>
+<script>
+    document.getElementById('review').addEventListener('input', function() {
+        const left = 100 - this.value.length;
+        document.getElementById('reviewCharsLeft').textContent = left;
+    });
+</script>
+{% endblock %}

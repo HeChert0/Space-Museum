@@ -3,6 +3,7 @@ from django.db import connection, transaction, models
 from django.contrib import messages
 from django.http import HttpResponse, JsonResponse, FileResponse
 from .models import *
+from .validators import *
 import pandas as pd
 from datetime import datetime, date
 from django.conf import settings
@@ -73,45 +74,95 @@ def visitor_add(request):
             max_id = Visitor.objects.aggregate(models.Max('visitor_id'))['visitor_id__max']
             new_id = (max_id or 0) + 1
 
-            # Преобразуем строки в даты
-            birth_date = datetime.strptime(request.POST['birth_date'], '%Y-%m-%d').date()
-            visit_date = datetime.strptime(request.POST['visit_date'], '%Y-%m-%d').date()
+            # Проверка уникальности ID
+            check_unique_id(Visitor, 'visitor_id', new_id)
 
-            # Валидация
+            # Валидация ФИО
+            full_name = validate_fio(request.POST.get('full_name', ''))
+
+            # Валидация дат
+            birth_date_str = request.POST.get('birth_date', '')
+            visit_date_str = request.POST.get('visit_date', '')
+
+            # Преобразуем из формата ДД.ММ.ГГГГ если нужно
+            if '.' in birth_date_str:
+                birth_date = validate_date_format(birth_date_str)
+            else:
+                birth_date = datetime.strptime(birth_date_str, '%Y-%m-%d').date()
+
+            if '.' in visit_date_str:
+                visit_date = validate_date_format(visit_date_str)
+            else:
+                visit_date = datetime.strptime(visit_date_str, '%Y-%m-%d').date()
+
+            # Логические проверки дат
+            if birth_date > date.today():
+                messages.error(request, 'Дата рождения не может быть в будущем!')
+                return redirect('visitor_add')
+
             if visit_date < birth_date:
                 messages.error(request, 'Дата посещения не может быть раньше даты рождения!')
                 return redirect('visitor_add')
 
+            if visit_date > date.today():
+                messages.error(request, 'Дата посещения не может быть в будущем!')
+                return redirect('visitor_add')
+
+            # Валидация гражданства
+            citizenship = request.POST.get('citizenship', '')
+            if citizenship not in COUNTRIES:
+                messages.error(request, 'Выберите гражданство из списка!')
+                return redirect('visitor_add')
+
+            # Валидация типа билета
+            ticket_type = request.POST.get('ticket_type', '')
+            if ticket_type not in TICKET_TYPES:
+                messages.error(request, 'Выберите тип билета из списка!')
+                return redirect('visitor_add')
+
+            # Валидация отзыва
+            review = request.POST.get('review', '').strip()
+            if review:
+                if len(review) > 100:
+                    messages.error(request, 'Отзыв не может быть длиннее 100 символов!')
+                    return redirect('visitor_add')
+                # Проверка на бессмысленные символы
+                if re.match(r'^[!@#$%^&*()_+=\-\s]+$', review):
+                    messages.error(request, 'Отзыв не может состоять только из специальных символов!')
+                    return redirect('visitor_add')
+
             visitor = Visitor(
                 visitor_id=new_id,
-                full_name=request.POST['full_name'],
+                full_name=full_name,
                 birth_date=birth_date,
-                citizenship=request.POST['citizenship'],
-                ticket_type=request.POST['ticket_type'],
+                citizenship=citizenship,
+                ticket_type=ticket_type,
                 visit_date=visit_date,
-                review=request.POST.get('review', '')
+                review=review if review else ''
             )
 
             visitor.save()
             messages.success(request, 'Посетитель успешно добавлен!')
             return redirect('visitor_list')
+
+        except ValidationError as e:
+            messages.error(request, str(e))
+            return redirect('visitor_add')
         except Exception as e:
             messages.error(request, f'Ошибка при добавлении: {str(e)}')
+            return redirect('visitor_add')
 
-    fields = [
-        {'name': 'full_name', 'label': 'ФИО', 'type': 'text', 'required': True},
-        {'name': 'birth_date', 'label': 'Дата рождения', 'type': 'date', 'required': True},
-        {'name': 'citizenship', 'label': 'Гражданство', 'type': 'text', 'required': True},
-        {'name': 'ticket_type', 'label': 'Тип билета', 'type': 'text', 'required': True},
-        {'name': 'visit_date', 'label': 'Дата посещения', 'type': 'date', 'required': True},
-        {'name': 'review', 'label': 'Отзыв', 'type': 'textarea', 'required': False},
-    ]
+    # Подготовка данных для формы
+    fields_data = {
+        'countries': COUNTRIES,
+        'ticket_types': TICKET_TYPES,
+    }
 
-    return render(request, 'core/entity_form_add.html', {
+    return render(request, 'core/visitor_form_add.html', {
         'entity_name': 'Посетитель',
         'operation': 'Добавить',
-        'fields': fields,
-        'entity_type': 'visitor'
+        'entity_type': 'visitor',
+        'fields_data': fields_data
     })
 
 
@@ -124,47 +175,90 @@ def visitor_update(request):
 
         if request.method == 'POST':
             try:
-                visitor.full_name = request.POST['full_name']
+                # Валидация ФИО
+                full_name = validate_fio(request.POST.get('full_name', ''))
 
-                # Преобразуем строки в даты
-                birth_date = datetime.strptime(request.POST['birth_date'], '%Y-%m-%d').date()
-                visit_date = datetime.strptime(request.POST['visit_date'], '%Y-%m-%d').date()
+                # Валидация дат
+                birth_date_str = request.POST.get('birth_date', '')
+                visit_date_str = request.POST.get('visit_date', '')
 
-                # Валидация
+                # Преобразуем из формата ДД.ММ.ГГГГ если нужно
+                if '.' in birth_date_str:
+                    birth_date = validate_date_format(birth_date_str)
+                else:
+                    birth_date = datetime.strptime(birth_date_str, '%Y-%m-%d').date()
+
+                if '.' in visit_date_str:
+                    visit_date = validate_date_format(visit_date_str)
+                else:
+                    visit_date = datetime.strptime(visit_date_str, '%Y-%m-%d').date()
+
+                # Логические проверки дат
+                if birth_date > date.today():
+                    messages.error(request, 'Дата рождения не может быть в будущем!')
+                    return redirect(f'visitor_update?id={selected_id}')
+
                 if visit_date < birth_date:
                     messages.error(request, 'Дата посещения не может быть раньше даты рождения!')
                     return redirect(f'visitor_update?id={selected_id}')
 
+                if visit_date > date.today():
+                    messages.error(request, 'Дата посещения не может быть в будущем!')
+                    return redirect(f'visitor_update?id={selected_id}')
+
+                # Валидация гражданства
+                citizenship = request.POST.get('citizenship', '')
+                if citizenship not in COUNTRIES:
+                    messages.error(request, 'Выберите гражданство из списка!')
+                    return redirect(f'visitor_update?id={selected_id}')
+
+                # Валидация типа билета
+                ticket_type = request.POST.get('ticket_type', '')
+                if ticket_type not in TICKET_TYPES:
+                    messages.error(request, 'Выберите тип билета из списка!')
+                    return redirect(f'visitor_update?id={selected_id}')
+
+                # Валидация отзыва
+                review = request.POST.get('review', '').strip()
+                if review:
+                    if len(review) > 100:
+                        messages.error(request, 'Отзыв не может быть длиннее 100 символов!')
+                        return redirect(f'visitor_update?id={selected_id}')
+                    if re.match(r'^[!@#$%^&*()_+=\-\s]+$', review):
+                        messages.error(request, 'Отзыв не может состоять только из специальных символов!')
+                        return redirect(f'visitor_update?id={selected_id}')
+
+                # Обновляем данные
+                visitor.full_name = full_name
                 visitor.birth_date = birth_date
                 visitor.visit_date = visit_date
-                visitor.citizenship = request.POST['citizenship']
-                visitor.ticket_type = request.POST['ticket_type']
-                visitor.review = request.POST.get('review', '')
+                visitor.citizenship = citizenship
+                visitor.ticket_type = ticket_type
+                visitor.review = review if review else ''
 
                 visitor.save()
                 messages.success(request, 'Посетитель успешно обновлен!')
                 return redirect('visitor_list')
+
+            except ValidationError as e:
+                messages.error(request, str(e))
+                return redirect(f'visitor_update?id={selected_id}')
             except Exception as e:
                 messages.error(request, f'Ошибка при обновлении: {str(e)}')
+                return redirect(f'visitor_update?id={selected_id}')
 
-        fields = [
-            {'name': 'full_name', 'label': 'ФИО', 'type': 'text', 'required': True, 'value': visitor.full_name},
-            {'name': 'birth_date', 'label': 'Дата рождения', 'type': 'date', 'required': True,
-             'value': visitor.birth_date},
-            {'name': 'citizenship', 'label': 'Гражданство', 'type': 'text', 'required': True,
-             'value': visitor.citizenship},
-            {'name': 'ticket_type', 'label': 'Тип билета', 'type': 'text', 'required': True,
-             'value': visitor.ticket_type},
-            {'name': 'visit_date', 'label': 'Дата посещения', 'type': 'date', 'required': True,
-             'value': visitor.visit_date},
-            {'name': 'review', 'label': 'Отзыв', 'type': 'textarea', 'required': False, 'value': visitor.review or ''},
-        ]
+        # Подготовка данных для формы
+        fields_data = {
+            'countries': COUNTRIES,
+            'ticket_types': TICKET_TYPES,
+            'visitor': visitor
+        }
 
-        return render(request, 'core/entity_form_update.html', {
+        return render(request, 'core/visitor_form_update.html', {
             'entity_name': 'Посетитель',
             'operation': 'Обновить',
-            'fields': fields,
-            'entity_type': 'visitor'
+            'entity_type': 'visitor',
+            'fields_data': fields_data
         })
 
     columns = ['visitor_id', 'full_name', 'birth_date', 'citizenship']
@@ -239,50 +333,122 @@ def employee_list(request):
 
 
 def employee_add(request):
+    # Инициализируем form_data и fields_data ДО условия POST
+    form_data = {}
+
     if request.method == 'POST':
+        # Сохраняем все введенные данные
+        form_data = {
+            'full_name': request.POST.get('full_name', ''),
+            'department': request.POST.get('department', ''),
+            'position': request.POST.get('position', ''),
+            'hire_date': request.POST.get('hire_date', ''),
+            'phone_code': request.POST.get('phone_code', '+7'),
+            'phone_number': request.POST.get('phone_number', ''),
+            'qualification': request.POST.get('qualification', ''),
+        }
+
         try:
             # Получаем максимальный ID
             max_id = Employee.objects.aggregate(models.Max('employee_id'))['employee_id__max']
             new_id = (max_id or 0) + 1
 
-            # Преобразуем строку в дату
-            hire_date = datetime.strptime(request.POST['hire_date'], '%Y-%m-%d').date()
+            # Проверка уникальности ID
+            check_unique_id(Employee, 'employee_id', new_id)
 
-            # Валидация
+            # Валидация ФИО
+            full_name = validate_fio(form_data['full_name'])
+
+            # Валидация отдела
+            department = form_data['department']
+            if department not in DEPARTMENTS:
+                error = FieldValidationError('Выберите отдел из списка!')
+                error.field = 'department'
+                raise error
+
+            # Валидация должности
+            position = form_data['position']
+            if position not in POSITIONS_BY_DEPARTMENT.get(department, []):
+                error = FieldValidationError(f'Выберите корректную должность для отдела {department}!')
+                error.field = 'position'
+                raise error
+
+            # Валидация даты найма
+            hire_date_str = form_data['hire_date']
+            if '.' in hire_date_str:
+                hire_date = validate_date_format(hire_date_str)
+            else:
+                hire_date = datetime.strptime(hire_date_str, '%Y-%m-%d').date()
+
             if hire_date > date.today():
-                messages.error(request, 'Дата найма не может быть в будущем!')
-                return redirect('employee_add')
+                error = FieldValidationError('Дата найма не может быть в будущем!')
+                error.field = 'hire_date'
+                raise error
+
+            if hire_date < date(1990, 1, 1):
+                error = FieldValidationError('Дата найма не может быть раньше 1990 года!')
+                error.field = 'hire_date'
+                raise error
+
+            # Валидация телефона
+            country_code = form_data['phone_code']
+            phone_number = form_data['phone_number']
+            phone = validate_phone(phone_number, country_code)
+
+            # Проверка уникальности телефона
+            check_unique_phone(Employee, phone)
+
+            # Валидация квалификации
+            qualification = validate_text_field(
+                form_data['qualification'],
+                max_length=70,
+                min_length=2,
+                allow_digits=False,
+                allow_special=False
+            )
 
             employee = Employee(
                 employee_id=new_id,
-                full_name=request.POST['full_name'],
-                position=request.POST['position'],
+                full_name=full_name,
+                position=position,
                 hire_date=hire_date,
-                department=request.POST['department'],
-                phone=request.POST['phone'],
-                qualification=request.POST['qualification']
+                department=department,
+                phone=phone,
+                qualification=qualification
             )
 
             employee.save()
             messages.success(request, 'Сотрудник успешно добавлен!')
             return redirect('employee_list')
-        except Exception as e:
-            messages.error(request, f'Ошибка при добавлении: {str(e)}')
 
-    fields = [
-        {'name': 'full_name', 'label': 'ФИО', 'type': 'text', 'required': True},
-        {'name': 'position', 'label': 'Должность', 'type': 'text', 'required': True},
-        {'name': 'hire_date', 'label': 'Дата найма', 'type': 'date', 'required': True},
-        {'name': 'department', 'label': 'Отдел', 'type': 'text', 'required': True},
-        {'name': 'phone', 'label': 'Телефон', 'type': 'text', 'required': True},
-        {'name': 'qualification', 'label': 'Квалификация', 'type': 'text', 'required': True},
-    ]
+        except ValidationError as e:
+            messages.error(request, str(e))
+            fields_data = {
+                'departments': DEPARTMENTS,
+                'positions_by_department': POSITIONS_BY_DEPARTMENT,
+                'form_data': form_data,
+                'error_field': e.field if hasattr(e, 'field') else None
+            }
+            return render(request, 'core/employee_form_add.html', {
+                'entity_name': 'Сотрудник',
+                'operation': 'Добавить',
+                'entity_type': 'employee',
+                'fields_data': fields_data
+            })
 
-    return render(request, 'core/entity_form_add.html', {
+    # При GET запросе или если не было исключения
+    fields_data = {
+        'departments': DEPARTMENTS,
+        'positions_by_department': POSITIONS_BY_DEPARTMENT,
+        'form_data': form_data,  # Будет пустым при GET
+        'error_field': None
+    }
+
+    return render(request, 'core/employee_form_add.html', {
         'entity_name': 'Сотрудник',
         'operation': 'Добавить',
-        'fields': fields,
-        'entity_type': 'employee'
+        'entity_type': 'employee',
+        'fields_data': fields_data
     })
 
 
@@ -295,43 +461,95 @@ def employee_update(request):
 
         if request.method == 'POST':
             try:
-                employee.full_name = request.POST['full_name']
-                employee.position = request.POST['position']
+                # Валидация ФИО
+                full_name = validate_fio(request.POST.get('full_name', ''))
 
-                hire_date = datetime.strptime(request.POST['hire_date'], '%Y-%m-%d').date()
+                # Валидация отдела
+                department = request.POST.get('department', '')
+                if department not in DEPARTMENTS:
+                    messages.error(request, 'Выберите отдел из списка!')
+                    return redirect(f'employee_update?id={selected_id}')
+
+                # Валидация должности
+                position = request.POST.get('position', '')
+                if position not in POSITIONS_BY_DEPARTMENT.get(department, []):
+                    messages.error(request, f'Выберите корректную должность для отдела {department}!')
+                    return redirect(f'employee_update?id={selected_id}')
+
+                # Валидация даты найма
+                hire_date_str = request.POST.get('hire_date', '')
+                if '.' in hire_date_str:
+                    hire_date = validate_date_format(hire_date_str)
+                else:
+                    hire_date = datetime.strptime(hire_date_str, '%Y-%m-%d').date()
 
                 if hire_date > date.today():
                     messages.error(request, 'Дата найма не может быть в будущем!')
                     return redirect(f'employee_update?id={selected_id}')
 
-                employee.hire_date = hire_date
-                employee.department = request.POST['department']
-                employee.phone = request.POST['phone']
-                employee.qualification = request.POST['qualification']
+                if hire_date < date(1990, 1, 1):
+                    messages.error(request, 'Дата найма не может быть раньше 1990 года!')
+                    return redirect(f'employee_update?id={selected_id}')
 
-                # Валидация
+                # Валидация телефона
+                country_code = request.POST.get('phone_code', '')
+                phone_number = request.POST.get('phone_number', '')
+                phone = validate_phone(phone_number, country_code)
+
+                # Проверка уникальности телефона (исключая текущего сотрудника)
+                check_unique_phone(Employee, phone, exclude_id=selected_id)
+
+                # Валидация квалификации
+                qualification = validate_text_field(
+                    request.POST.get('qualification', ''),
+                    max_length=70,
+                    min_length=2,
+                    allow_digits=False,
+                    allow_special=False
+                )
+
+                # Обновляем данные
+                employee.full_name = full_name
+                employee.position = position
+                employee.hire_date = hire_date
+                employee.department = department
+                employee.phone = phone
+                employee.qualification = qualification
 
                 employee.save()
                 messages.success(request, 'Сотрудник успешно обновлен!')
                 return redirect('employee_list')
+
+            except ValidationError as e:
+                messages.error(request, str(e))
+                return redirect(f'employee_update?id={selected_id}')
             except Exception as e:
                 messages.error(request, f'Ошибка при обновлении: {str(e)}')
+                return redirect(f'employee_update?id={selected_id}')
 
-        fields = [
-            {'name': 'full_name', 'label': 'ФИО', 'type': 'text', 'required': True, 'value': employee.full_name},
-            {'name': 'position', 'label': 'Должность', 'type': 'text', 'required': True, 'value': employee.position},
-            {'name': 'hire_date', 'label': 'Дата найма', 'type': 'date', 'required': True, 'value': employee.hire_date},
-            {'name': 'department', 'label': 'Отдел', 'type': 'text', 'required': True, 'value': employee.department},
-            {'name': 'phone', 'label': 'Телефон', 'type': 'text', 'required': True, 'value': employee.phone},
-            {'name': 'qualification', 'label': 'Квалификация', 'type': 'text', 'required': True,
-             'value': employee.qualification},
-        ]
+        # Разделяем телефон на код и номер для отображения
+        phone_code = ''
+        phone_number = employee.phone
+        if employee.phone.startswith('+375'):
+            phone_code = '+375'
+            phone_number = employee.phone[4:]
+        elif employee.phone.startswith('+7'):
+            phone_code = '+7'
+            phone_number = employee.phone[2:]
 
-        return render(request, 'core/entity_form_update.html', {
+        fields_data = {
+            'departments': DEPARTMENTS,
+            'positions_by_department': POSITIONS_BY_DEPARTMENT,
+            'employee': employee,
+            'phone_code': phone_code,
+            'phone_number': phone_number
+        }
+
+        return render(request, 'core/employee_form_update.html', {
             'entity_name': 'Сотрудник',
             'operation': 'Обновить',
-            'fields': fields,
-            'entity_type': 'employee'
+            'entity_type': 'employee',
+            'fields_data': fields_data
         })
 
     columns = ['employee_id', 'full_name', 'position', 'department']
@@ -397,51 +615,113 @@ def exhibition_list(request):
 
 
 def exhibition_add(request):
+    form_data = {}
+
     if request.method == 'POST':
+        form_data = {
+            'title': request.POST.get('title', ''),
+            'theme': request.POST.get('theme', ''),
+            'start_date': request.POST.get('start_date', ''),
+            'end_date': request.POST.get('end_date', ''),
+            'location': request.POST.get('location', ''),
+            'type': request.POST.get('type', ''),
+        }
+
         try:
             # Получаем максимальный ID
             max_id = Exhibition.objects.aggregate(models.Max('exhibition_id'))['exhibition_id__max']
             new_id = (max_id or 0) + 1
 
-            # Преобразуем строки в даты
-            start_date = datetime.strptime(request.POST['start_date'], '%Y-%m-%d').date()
-            end_date = datetime.strptime(request.POST['end_date'], '%Y-%m-%d').date()
+            # Проверка уникальности ID
+            check_unique_id(Exhibition, 'exhibition_id', new_id)
 
-            # Валидация
+            # Валидация названия
+            title = validate_text_field(
+                form_data['title'],
+                max_length=50,
+                min_length=2,
+                allow_digits=False,
+                allow_special=False
+            )
+
+            # Валидация темы
+            theme = validate_text_field(
+                form_data['theme'],
+                max_length=50,
+                min_length=2,
+                allow_digits=False,
+                allow_special=False
+            )
+
+            # Валидация дат
+            if '.' in form_data['start_date']:
+                start_date = validate_date_format(form_data['start_date'])
+            else:
+                start_date = datetime.strptime(form_data['start_date'], '%Y-%m-%d').date()
+
+            if '.' in form_data['end_date']:
+                end_date = validate_date_format(form_data['end_date'])
+            else:
+                end_date = datetime.strptime(form_data['end_date'], '%Y-%m-%d').date()
+
+            # Логические проверки дат
             if end_date < start_date:
-                messages.error(request, 'Дата окончания не может быть раньше даты начала!')
-                return redirect('exhibition_add')
+                error = FieldValidationError('Дата окончания не может быть раньше даты начала!')
+                error.field = 'end_date'
+                raise error
+
+            # Валидация места
+            if form_data['location'] not in EXHIBITION_LOCATIONS:
+                error = FieldValidationError('Выберите место из списка!')
+                error.field = 'location'
+                raise error
+
+            # Валидация типа
+            if form_data['type'] not in EXHIBITION_TYPES:
+                error = FieldValidationError('Выберите тип выставки!')
+                error.field = 'type'
+                raise error
 
             exhibition = Exhibition(
                 exhibition_id=new_id,
-                title=request.POST['title'],
-                theme=request.POST['theme'],
+                title=title,
+                theme=theme,
                 start_date=start_date,
                 end_date=end_date,
-                location=request.POST['location'],
-                type=request.POST['type']
+                location=form_data['location'],
+                type=form_data['type']
             )
 
             exhibition.save()
             messages.success(request, 'Выставка успешно добавлена!')
             return redirect('exhibition_list')
-        except Exception as e:
-            messages.error(request, f'Ошибка при добавлении: {str(e)}')
 
-    fields = [
-        {'name': 'title', 'label': 'Название', 'type': 'text', 'required': True},
-        {'name': 'theme', 'label': 'Тема', 'type': 'text', 'required': True},
-        {'name': 'start_date', 'label': 'Дата начала', 'type': 'date', 'required': True},
-        {'name': 'end_date', 'label': 'Дата окончания', 'type': 'date', 'required': True},
-        {'name': 'location', 'label': 'Место проведения', 'type': 'text', 'required': True},
-        {'name': 'type', 'label': 'Тип', 'type': 'text', 'required': True},
-    ]
+        except ValidationError as e:
+            messages.error(request, str(e))
+            fields_data = {
+                'locations': EXHIBITION_LOCATIONS,
+                'types': EXHIBITION_TYPES,
+                'form_data': form_data,
+                'error_field': e.field if hasattr(e, 'field') else None
+            }
+            return render(request, 'core/exhibition_form_add.html', {
+                'entity_name': 'Выставка',
+                'operation': 'Добавить',
+                'entity_type': 'exhibition',
+                'fields_data': fields_data
+            })
 
-    return render(request, 'core/entity_form_add.html', {
+    fields_data = {
+        'locations': EXHIBITION_LOCATIONS,
+        'types': EXHIBITION_TYPES,
+        'form_data': form_data
+    }
+
+    return render(request, 'core/exhibition_form_add.html', {
         'entity_name': 'Выставка',
         'operation': 'Добавить',
-        'fields': fields,
-        'entity_type': 'exhibition'
+        'entity_type': 'exhibition',
+        'fields_data': fields_data
     })
 
 
@@ -585,69 +865,132 @@ def excursion_list(request):
 
 
 def excursion_add(request):
+    form_data = {}
+
     if request.method == 'POST':
+        form_data = {
+            'title': request.POST.get('title', ''),
+            'date': request.POST.get('date', ''),
+            'language': request.POST.get('language', ''),
+            'ticket_num': request.POST.get('ticket_num', ''),
+            'price': request.POST.get('price', ''),
+            'duration': request.POST.get('duration', ''),
+            'employee_id': request.POST.get('employee_id', ''),
+        }
+
         try:
             # Получаем максимальный ID
             max_id = Excursion.objects.aggregate(models.Max('excursion_id'))['excursion_id__max']
             new_id = (max_id or 0) + 1
 
-            # Преобразуем строку в дату
-            excursion_date = datetime.strptime(request.POST['date'], '%Y-%m-%d').date()
+            # Проверка уникальности ID
+            check_unique_id(Excursion, 'excursion_id', new_id)
+
+            # Валидация названия
+            title = validate_text_field(
+                form_data['title'],
+                max_length=50,
+                min_length=2,
+                allow_digits=False,
+                allow_special=False
+            )
+
+            # Валидация даты
+            if '.' in form_data['date']:
+                excursion_date = validate_date_format(form_data['date'])
+            else:
+                excursion_date = datetime.strptime(form_data['date'], '%Y-%m-%d').date()
+
+            # Валидация языка
+            if form_data['language'] not in EXCURSION_LANGUAGES:
+                error = FieldValidationError('Выберите язык из списка!')
+                error.field = 'language'
+                raise error
+
+            # Валидация количества билетов
+            try:
+                ticket_num = int(form_data['ticket_num'])
+                if ticket_num < 10 or ticket_num > 100:
+                    error = FieldValidationError('Количество билетов должно быть от 10 до 100!')
+                    error.field = 'ticket_num'
+                    raise error
+            except ValueError:
+                error = FieldValidationError('Введите корректное число билетов!')
+                error.field = 'ticket_num'
+                raise error
+
+            # Валидация цены
+            try:
+                price = float(form_data['price'])
+                if price < 20 or price > 300:
+                    error = FieldValidationError('Цена должна быть от 20 до 300!')
+                    error.field = 'price'
+                    raise error
+            except ValueError:
+                error = FieldValidationError('Введите корректную цену!')
+                error.field = 'price'
+                raise error
+
+            # Валидация продолжительности
+            try:
+                duration = int(form_data['duration'])
+                if duration < 30 or duration > 180:
+                    error = FieldValidationError('Продолжительность должна быть от 30 до 180 минут!')
+                    error.field = 'duration'
+                    raise error
+            except ValueError:
+                error = FieldValidationError('Введите корректную продолжительность!')
+                error.field = 'duration'
+                raise error
 
             excursion = Excursion(
                 excursion_id=new_id,
-                title=request.POST['title'],
+                title=title,
                 date=excursion_date,
-                language=request.POST['language'],
-                ticket_num=request.POST['ticket_num'],
-                price=request.POST['price'],
-                duration=request.POST['duration']
+                language=form_data['language'],
+                ticket_num=ticket_num,
+                price=price,
+                duration=duration
             )
 
             # Обработка employee_id
-            employee_id_value = request.POST.get('employee_id', '').strip()
-            if employee_id_value:
+            if form_data['employee_id'].strip():
                 try:
-                    employee = Employee.objects.get(employee_id=int(employee_id_value))
-                    excursion.employee = employee  # Присваиваем объект
+                    employee = Employee.objects.get(employee_id=int(form_data['employee_id']))
+                    excursion.employee = employee
                 except (ValueError, Employee.DoesNotExist):
-                    messages.error(request, f'Сотрудник с ID {employee_id_value} не найден!')
-                    return redirect('excursion_add')
-
-            # Валидация
-            if int(excursion.ticket_num) < 0:
-                messages.error(request, 'Количество билетов не может быть отрицательным!')
-                return redirect('excursion_add')
-
-            if float(excursion.price) < 0:
-                messages.error(request, 'Цена не может быть отрицательной!')
-                return redirect('excursion_add')
-
-            if int(excursion.duration) <= 0:
-                messages.error(request, 'Продолжительность должна быть положительной!')
-                return redirect('excursion_add')
+                    error = FieldValidationError(f'Сотрудник с ID {form_data["employee_id"]} не найден!')
+                    error.field = 'employee_id'
+                    raise error
 
             excursion.save()
             messages.success(request, 'Экскурсия успешно добавлена!')
             return redirect('excursion_list')
-        except Exception as e:
-            messages.error(request, f'Ошибка при добавлении: {str(e)}')
 
-    fields = [
-        {'name': 'title', 'label': 'Название', 'type': 'text', 'required': True},
-        {'name': 'date', 'label': 'Дата', 'type': 'date', 'required': True},
-        {'name': 'language', 'label': 'Язык', 'type': 'text', 'required': True},
-        {'name': 'ticket_num', 'label': 'Количество билетов', 'type': 'number', 'required': True},
-        {'name': 'price', 'label': 'Цена', 'type': 'number', 'required': True, 'step': '0.01'},
-        {'name': 'duration', 'label': 'Продолжительность (минуты)', 'type': 'number', 'required': True},
-        {'name': 'employee_id', 'label': 'ID сотрудника (необязательно)', 'type': 'number', 'required': False},
-    ]
+        except ValidationError as e:
+            messages.error(request, str(e))
+            fields_data = {
+                'languages': EXCURSION_LANGUAGES,
+                'form_data': form_data,
+                'error_field': e.field if hasattr(e, 'field') else None
+            }
+            return render(request, 'core/excursion_form_add.html', {
+                'entity_name': 'Экскурсия',
+                'operation': 'Добавить',
+                'entity_type': 'excursion',
+                'fields_data': fields_data
+            })
 
-    return render(request, 'core/entity_form_add.html', {
+    fields_data = {
+        'languages': EXCURSION_LANGUAGES,
+        'form_data': form_data
+    }
+
+    return render(request, 'core/excursion_form_add.html', {
         'entity_name': 'Экскурсия',
         'operation': 'Добавить',
-        'fields': fields,
-        'entity_type': 'excursion'
+        'entity_type': 'excursion',
+        'fields_data': fields_data
     })
 
 
@@ -812,61 +1155,135 @@ def exhibit_list(request):
 
 
 def exhibit_add(request):
+    form_data = {}
+
     if request.method == 'POST':
+        form_data = {
+            'title': request.POST.get('title', ''),
+            'description': request.POST.get('description', ''),
+            'creation_date': request.POST.get('creation_date', ''),
+            'country': request.POST.get('country', ''),
+            'state': request.POST.get('state', ''),
+            'type': request.POST.get('type', ''),
+            'mission_id': request.POST.get('mission_id', ''),
+        }
+
         try:
             # Получаем максимальный ID
             max_id = Exhibit.objects.aggregate(models.Max('exhibit_id'))['exhibit_id__max']
             new_id = (max_id or 0) + 1
 
-            # Преобразуем строку в дату
-            creation_date = datetime.strptime(request.POST['creation_date'], '%Y-%m-%d').date()
+            # Проверка уникальности ID
+            check_unique_id(Exhibit, 'exhibit_id', new_id)
 
-            # Валидация
+            # Валидация названия (разрешаем цифры, скобки, кавычки)
+            title = form_data['title'].strip()
+            if len(title) < 2:
+                error = FieldValidationError('Название должно содержать минимум 2 символа')
+                error.field = 'title'
+                raise error
+            if len(title) > 70:
+                error = FieldValidationError('Название не может быть длиннее 70 символов')
+                error.field = 'title'
+                raise error
+            # Проверяем на недопустимые символы (разрешаем буквы, цифры, пробелы, скобки, кавычки, дефис)
+            if not re.match(r'^[а-яА-ЯёЁa-zA-Z0-9\s\(\)\"\-]+$', title):
+                error = FieldValidationError('Название содержит недопустимые символы')
+                error.field = 'title'
+                raise error
+
+            # Валидация описания
+            description = form_data['description'].strip()
+            if len(description) < 5:
+                error = FieldValidationError('Описание должно содержать минимум 5 символов')
+                error.field = 'description'
+                raise error
+            if len(description) > 100:
+                error = FieldValidationError('Описание не может быть длиннее 100 символов')
+                error.field = 'description'
+                raise error
+
+            # Валидация даты создания
+            if '.' in form_data['creation_date']:
+                creation_date = validate_date_format(form_data['creation_date'])
+            else:
+                creation_date = datetime.strptime(form_data['creation_date'], '%Y-%m-%d').date()
+
             if creation_date > date.today():
-                messages.error(request, 'Дата создания не может быть в будущем!')
-                return redirect('exhibit_add')
+                error = FieldValidationError('Дата создания не может быть в будущем!')
+                error.field = 'creation_date'
+                raise error
+
+            # Валидация страны
+            if form_data['country'] not in SPACE_COUNTRIES:
+                error = FieldValidationError('Выберите страну из списка!')
+                error.field = 'country'
+                raise error
+
+            # Валидация состояния
+            if form_data['state'] not in EXHIBIT_STATES:
+                error = FieldValidationError('Выберите состояние из списка!')
+                error.field = 'state'
+                raise error
+
+            # Валидация типа
+            if form_data['type'] not in EXHIBIT_TYPES:
+                error = FieldValidationError('Выберите тип из списка!')
+                error.field = 'type'
+                raise error
 
             exhibit = Exhibit(
                 exhibit_id=new_id,
-                title=request.POST['title'],
-                description=request.POST['description'],
+                title=title,
+                description=description,
                 creation_date=creation_date,
-                country=request.POST['country'],
-                state=request.POST['state'],
-                type=request.POST['type']
+                country=form_data['country'],
+                state=form_data['state'],
+                type=form_data['type']
             )
 
-            mission_id_value = request.POST.get('mission_id', '').strip()
-            if mission_id_value:
+            # Обработка mission_id
+            if form_data['mission_id'].strip():
                 try:
-                    # Проверяем существование миссии
-                    mission = SpaceMission.objects.get(mission_id=int(mission_id_value))
-                    exhibit.mission_id = mission  # Присваиваем объект
+                    mission = SpaceMission.objects.get(mission_id=int(form_data['mission_id']))
+                    exhibit.mission_id = mission
                 except (ValueError, SpaceMission.DoesNotExist):
-                    messages.error(request, f'Миссия с ID {mission_id_value} не найдена!')
-                    return redirect('exhibit_add')
+                    error = FieldValidationError(f'Миссия с ID {form_data["mission_id"]} не найдена!')
+                    error.field = 'mission_id'
+                    raise error
 
             exhibit.save()
             messages.success(request, 'Экспонат успешно добавлен!')
             return redirect('exhibit_list')
-        except Exception as e:
-            messages.error(request, f'Ошибка при добавлении: {str(e)}')
 
-    fields = [
-        {'name': 'title', 'label': 'Название', 'type': 'text', 'required': True},
-        {'name': 'description', 'label': 'Описание', 'type': 'textarea', 'required': True},
-        {'name': 'creation_date', 'label': 'Дата создания', 'type': 'date', 'required': True},
-        {'name': 'country', 'label': 'Страна', 'type': 'text', 'required': True},
-        {'name': 'state', 'label': 'Состояние', 'type': 'text', 'required': True},
-        {'name': 'type', 'label': 'Тип', 'type': 'text', 'required': True},
-        {'name': 'mission_id', 'label': 'ID миссии (необязательно)', 'type': 'number', 'required': False},
-    ]
+        except ValidationError as e:
+            messages.error(request, str(e))
+            fields_data = {
+                'countries': SPACE_COUNTRIES,
+                'states': EXHIBIT_STATES,
+                'types': EXHIBIT_TYPES,
+                'form_data': form_data,
+                'error_field': e.field if hasattr(e, 'field') else None
+            }
+            return render(request, 'core/exhibit_form_add.html', {
+                'entity_name': 'Экспонат',
+                'operation': 'Добавить',
+                'entity_type': 'exhibit',
+                'fields_data': fields_data
+            })
 
-    return render(request, 'core/entity_form_add.html', {
+    fields_data = {
+        'countries': SPACE_COUNTRIES,
+        'states': EXHIBIT_STATES,
+        'types': EXHIBIT_TYPES,
+        'form_data': form_data
+    }
+
+    return render(request, 'core/exhibit_form_add.html', {
         'entity_name': 'Экспонат',
         'operation': 'Добавить',
-        'fields': fields,
-        'entity_type': 'exhibit'
+        'entity_type': 'exhibit',
+        'fields_data': fields_data
     })
 
 
@@ -1018,47 +1435,143 @@ def mission_list(request):
 
 
 def mission_add(request):
+    form_data = {}  # Инициализируем пустой словарь
+
     if request.method == 'POST':
+        form_data = {
+            'title': request.POST.get('title', ''),
+            'countries': request.POST.getlist('countries[]'),
+            'start_date': request.POST.get('start_date', ''),
+            'end_date': request.POST.get('end_date', ''),
+            'crew': request.POST.getlist('crew[]'),
+            'goal': request.POST.get('goal', ''),
+        }
+
         try:
             # Получаем максимальный ID
             max_id = SpaceMission.objects.aggregate(models.Max('mission_id'))['mission_id__max']
             new_id = (max_id or 0) + 1
 
-            # Преобразуем строки в даты
-            start_date = datetime.strptime(request.POST['start_date'], '%Y-%m-%d').date()
-            end_date = datetime.strptime(request.POST['end_date'], '%Y-%m-%d').date()
+            # Проверка уникальности ID
+            check_unique_id(SpaceMission, 'mission_id', new_id)
 
-            # Валидация
-            if end_date < start_date:
-                messages.error(request, 'Дата окончания не может быть раньше даты начала!')
-                return redirect('mission_add')
+            # Валидация названия (буквы, цифры, -, скобки)
+            title = form_data['title'].strip()
+            if len(title) < 2:
+                error = FieldValidationError('Название должно содержать минимум 2 символа')
+                error.field = 'title'
+                raise error
+            if len(title) > 50:
+                error = FieldValidationError('Название не может быть длиннее 50 символов')
+                error.field = 'title'
+                raise error
+            if not re.match(r'^[а-яА-ЯёЁa-zA-Z0-9\s\(\)\-]+$', title):
+                error = FieldValidationError('Название содержит недопустимые символы')
+                error.field = 'title'
+                raise error
 
-            # Обработка экипажа - получаем массив
-            crew_list = request.POST.getlist('crew[]')
-            crew_list = [member.strip() for member in crew_list if member.strip()]  # Убираем пустые
+            # Валидация стран
+            if not form_data['countries']:
+                error = FieldValidationError('Выберите хотя бы одну страну!')
+                error.field = 'countries'
+                raise error
+            if len(form_data['countries']) > 5:
+                error = FieldValidationError('Можно выбрать максимум 5 стран!')
+                error.field = 'countries'
+                raise error
+            for country in form_data['countries']:
+                if country not in SPACE_COUNTRIES:
+                    error = FieldValidationError(f'Недопустимая страна: {country}')
+                    error.field = 'countries'
+                    raise error
+
+            # Объединяем страны в строку
+            country_str = ', '.join(form_data['countries'])
+
+            # Валидация дат
+            if '.' in form_data['start_date']:
+                start_date = validate_date_format(form_data['start_date'])
+            else:
+                start_date = datetime.strptime(form_data['start_date'], '%Y-%m-%d').date()
+
+            # Обработка даты окончания (может быть None)
+            end_date = None
+            if form_data['end_date'] and form_data['end_date'] != 'None':
+                if '.' in form_data['end_date']:
+                    end_date = validate_date_format(form_data['end_date'])
+                else:
+                    end_date = datetime.strptime(form_data['end_date'], '%Y-%m-%d').date()
+
+                if end_date < start_date:
+                    error = FieldValidationError('Дата окончания не может быть раньше даты начала!')
+                    error.field = 'end_date'
+                    raise error
+
+            # Валидация экипажа
+            crew_list = []
+            for member in form_data['crew']:
+                member = member.strip()
+                if member:
+                    # Валидация каждого члена экипажа как ФИО
+                    try:
+                        validated_member = validate_fio(member)
+                        crew_list.append(validated_member)
+                    except ValidationError:
+                        error = FieldValidationError(f'Некорректное ФИО члена экипажа: {member}')
+                        error.field = 'crew'
+                        raise error
+
+            # Валидация цели
+            goal = form_data['goal'].strip()
+            if len(goal) < 10:
+                error = FieldValidationError('Цель миссии должна содержать минимум 10 символов')
+                error.field = 'goal'
+                raise error
+            if len(goal) > 100:
+                error = FieldValidationError('Цель миссии не может быть длиннее 100 символов')
+                error.field = 'goal'
+                raise error
 
             mission = SpaceMission(
                 mission_id=new_id,
-                title=request.POST['title'],
-                country=request.POST['country'],
+                title=title,
+                country=country_str,
                 start_date=start_date,
                 end_date=end_date,
-                crew=crew_list if crew_list else [],  # Передаем как массив Python
-                goal=request.POST['goal']
+                crew=crew_list if crew_list else [],
+                goal=goal
             )
 
             mission.save()
             messages.success(request, 'Космическая миссия успешно добавлена!')
             return redirect('mission_list')
-        except Exception as e:
-            messages.error(request, f'Ошибка при добавлении: {str(e)}')
+
+        except ValidationError as e:
+            messages.error(request, str(e))
+            fields_data = {
+                'countries': SPACE_COUNTRIES,
+                'form_data': form_data,
+                'error_field': e.field if hasattr(e, 'field') else None
+            }
+            return render(request, 'core/mission_form_add.html', {
+                'entity_name': 'Космическая миссия',
+                'operation': 'Добавить',
+                'entity_type': 'mission',
+                'fields_data': fields_data
+            })
+
+    fields_data = {
+        'countries': SPACE_COUNTRIES,
+        'form_data': form_data,
+        'error_field': None
+    }
 
     return render(request, 'core/mission_form_add.html', {
         'entity_name': 'Космическая миссия',
         'operation': 'Добавить',
-        'entity_type': 'mission'
+        'entity_type': 'mission',
+        'fields_data': fields_data
     })
-
 
 def mission_update(request):
     missions = SpaceMission.objects.all()
@@ -2769,7 +3282,28 @@ def universal_crud_operation(request):
     if operation == 'export':
         try:
             with connection.cursor() as cursor:
-                cursor.execute(f"SELECT * FROM {table_name}")
+                # Используем безопасный запрос для экспорта
+                cursor.execute(f"""
+                    SELECT column_name, data_type 
+                    FROM information_schema.columns 
+                    WHERE table_name = %s 
+                    ORDER BY ordinal_position
+                """, [table_name])
+
+                columns_info = cursor.fetchall()
+
+                # Строим запрос с обработкой дат
+                select_parts = []
+                for col_name, col_type in columns_info:
+                    if col_type == 'date' or 'timestamp' in col_type:
+                        # Обрабатываем даты как текст для избежания ошибок
+                        select_parts.append(f"TO_CHAR({col_name}, 'DD.MM.YYYY') as {col_name}")
+                    else:
+                        select_parts.append(col_name)
+
+                select_query = f"SELECT {', '.join(select_parts)} FROM {table_name}"
+                cursor.execute(select_query)
+
                 columns = [desc[0] for desc in cursor.description]
                 data = cursor.fetchall()
 
@@ -2813,20 +3347,29 @@ def universal_crud_operation(request):
     }
 
     with connection.cursor() as cursor:
-        # Получаем информацию о колонках
+        # Получаем информацию о колонках с типами
         cursor.execute("""
             SELECT 
                 column_name,
                 data_type,
                 is_nullable,
-                column_default
+                column_default,
+                udt_name
             FROM information_schema.columns
             WHERE table_name = %s
             ORDER BY ordinal_position
         """, [table_name])
 
         columns_info = cursor.fetchall()
-        columns = [col[0] for col in columns_info]
+        columns = []
+        for col in columns_info:
+            columns.append({
+                'name': col[0],
+                'type': col[1],
+                'nullable': col[2] == 'YES',
+                'default': col[3],
+                'udt_name': col[4]
+            })
         context['columns'] = columns
 
         # Обработка POST запросов
@@ -2834,7 +3377,7 @@ def universal_crud_operation(request):
             action = request.POST.get('action')
 
             if action == 'add':
-                # Добавление записи с автоматической генерацией ID
+                # Добавление записи
                 fields = []
                 values = []
                 placeholders = []
@@ -2852,27 +3395,72 @@ def universal_crud_operation(request):
                 pk_result = cursor.fetchone()
                 pk_column = pk_result[0] if pk_result else None
 
-                # Если есть primary key и это integer тип, генерируем новый ID
-                if pk_column:
-                    for col in columns_info:
-                        if col[0] == pk_column and ('int' in col[1] or 'serial' in col[1]):
-                            # Получаем максимальный ID
-                            cursor.execute(f"SELECT MAX({pk_column}) FROM {table_name}")
+                # Проверка на существующий ID, если он передан вручную
+                if pk_column and pk_column in request.POST and request.POST[pk_column]:
+                    check_id = request.POST[pk_column]
+                    cursor.execute(f"SELECT EXISTS(SELECT 1 FROM {table_name} WHERE {pk_column} = %s)", [check_id])
+                    if cursor.fetchone()[0]:
+                        messages.error(request, f'Запись с ID {check_id} уже существует')
+                        return redirect(f"{request.path}?table={table_name}&operation=add")
+
+                    # Добавляем ID если он не существует
+                    fields.append(pk_column)
+                    values.append(check_id)
+                    placeholders.append('%s')
+                elif pk_column:
+                    # Автогенерация ID
+                    for col in columns:
+                        if col['name'] == pk_column and ('int' in col['type'] or 'serial' in col['type']):
+                            cursor.execute(f"SELECT COALESCE(MAX({pk_column}), 0) FROM {table_name}")
                             max_id = cursor.fetchone()[0]
-                            new_id = (max_id or 0) + 1
+                            new_id = max_id + 1
                             fields.append(pk_column)
                             values.append(new_id)
                             placeholders.append('%s')
                             break
 
                 # Обрабатываем остальные поля
-                for col in columns_info:
-                    col_name = col[0]
-                    # Пропускаем primary key, если уже добавили
-                    if col_name != pk_column and col_name in request.POST and request.POST[col_name]:
-                        fields.append(col_name)
-                        values.append(request.POST[col_name])
-                        placeholders.append('%s')
+                for col in columns:
+                    col_name = col['name']
+                    col_type = col['type']
+
+                    # Пропускаем primary key, если уже обработали
+                    if col_name == pk_column and pk_column in fields:
+                        continue
+
+                    if col_name in request.POST:
+                        value = request.POST[col_name]
+
+                        if value:  # Если значение не пустое
+                            # Обработка дат - преобразуем в формат YYYY-MM-DD
+                            if col_type == 'date':
+                                # input type="date" уже отправляет в формате YYYY-MM-DD
+                                # но на всякий случай проверим
+                                if '-' not in value and '.' in value:
+                                    # Если пришло в формате DD.MM.YYYY, преобразуем
+                                    try:
+                                        parts = value.split('.')
+                                        if len(parts) == 3:
+                                            value = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                                    except:
+                                        messages.error(request, f'Некорректный формат даты для поля {col_name}')
+                                        return redirect(f"{request.path}?table={table_name}&operation=add")
+
+                            # Обработка массивов
+                            elif 'ARRAY' in col_type.upper():
+                                # Преобразуем строку через запятую в PostgreSQL массив
+                                array_values = [v.strip() for v in value.split(',') if v.strip()]
+                                value = '{' + ','.join(
+                                    f'"{v}"' if ' ' in v or '"' in v else v for v in array_values) + '}'
+
+                            fields.append(col_name)
+                            values.append(value)
+                            placeholders.append('%s')
+                        elif col['nullable']:
+                            # Если поле может быть NULL
+                            fields.append(col_name)
+                            values.append(None)
+                            placeholders.append('%s')
 
                 if fields:
                     sql = f"INSERT INTO {table_name} ({', '.join(fields)}) VALUES ({', '.join(placeholders)})"
@@ -2881,7 +3469,7 @@ def universal_crud_operation(request):
                         messages.success(request, 'Запись успешно добавлена')
                         return redirect(f"{request.path}?table={table_name}&operation=view")
                     except Exception as e:
-                        messages.error(request, f'Ошибка: {str(e)}')
+                        messages.error(request, f'Ошибка при добавлении: {str(e)}')
 
             elif action == 'update':
                 # Обновление записи
@@ -2890,67 +3478,126 @@ def universal_crud_operation(request):
                     set_clause = []
                     values = []
 
-                    for col in columns_info:
-                        col_name = col[0]
-                        if col_name in request.POST and col_name != columns[0]:  # Не обновляем ID
+                    for col in columns:
+                        col_name = col['name']
+                        col_type = col['type']
+
+                        if col_name in request.POST and col_name != columns[0]['name']:  # Не обновляем ID
+                            value = request.POST[col_name]
+
+                            if value:
+                                # Обработка дат
+                                if col_type == 'date':
+                                    if '-' not in value and '.' in value:
+                                        try:
+                                            parts = value.split('.')
+                                            if len(parts) == 3:
+                                                value = f"{parts[2]}-{parts[1]}-{parts[0]}"
+                                        except:
+                                            messages.error(request, f'Некорректный формат даты для поля {col_name}')
+                                            return redirect(
+                                                f"{request.path}?table={table_name}&operation=update&id={record_id}")
+
+                                # Обработка массивов
+                                elif 'ARRAY' in col_type.upper():
+                                    array_values = [v.strip() for v in value.split(',') if v.strip()]
+                                    value = '{' + ','.join(
+                                        f'"{v}"' if ' ' in v or '"' in v else v for v in array_values) + '}'
+                            else:
+                                value = None
+
                             set_clause.append(f"{col_name} = %s")
-                            values.append(request.POST[col_name] or None)
+                            values.append(value)
 
                     if set_clause:
                         values.append(record_id)
-                        sql = f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE {columns[0]} = %s"
+                        sql = f"UPDATE {table_name} SET {', '.join(set_clause)} WHERE {columns[0]['name']} = %s"
                         try:
                             cursor.execute(sql, values)
                             messages.success(request, 'Запись успешно обновлена')
                             return redirect(f"{request.path}?table={table_name}&operation=view")
                         except Exception as e:
-                            messages.error(request, f'Ошибка: {str(e)}')
+                            messages.error(request, f'Ошибка при обновлении: {str(e)}')
 
             elif action == 'delete':
                 # Удаление одной записи
                 record_id = request.POST.get('record_id')
                 if record_id:
-                    sql = f"DELETE FROM {table_name} WHERE {columns[0]} = %s"
+                    sql = f"DELETE FROM {table_name} WHERE {columns[0]['name']} = %s"
                     try:
                         cursor.execute(sql, [record_id])
                         messages.success(request, 'Запись успешно удалена')
                     except Exception as e:
-                        messages.error(request, f'Ошибка: {str(e)}')
+                        messages.error(request, f'Ошибка при удалении: {str(e)}')
 
             elif action == 'delete_multiple':
                 # Удаление нескольких записей
                 delete_ids = request.POST.getlist('delete_ids')
                 if delete_ids:
                     placeholders = ', '.join(['%s'] * len(delete_ids))
-                    sql = f"DELETE FROM {table_name} WHERE {columns[0]} IN ({placeholders})"
+                    sql = f"DELETE FROM {table_name} WHERE {columns[0]['name']} IN ({placeholders})"
                     try:
                         cursor.execute(sql, delete_ids)
                         messages.success(request, f'Удалено записей: {len(delete_ids)}')
                     except Exception as e:
-                        messages.error(request, f'Ошибка: {str(e)}')
+                        messages.error(request, f'Ошибка при удалении: {str(e)}')
 
         # Обработка операций просмотра
         if operation == 'view' or operation == 'delete':
-            # Фильтрация
-            filter_column = request.GET.get('filter_column')
-            filter_value = request.GET.get('filter_value')
+            try:
+                # Фильтрация
+                filter_column = request.GET.get('filter_column')
+                filter_value = request.GET.get('filter_value')
 
-            sql = f"SELECT * FROM {table_name}"
-            params = []
+                # Строим безопасный запрос с обработкой дат
+                select_parts = []
+                date_columns = []
 
-            if filter_column and filter_value and filter_column in columns:
-                sql += f" WHERE {filter_column} LIKE %s"
-                params.append(f'%{filter_value}%')
+                for i, col in enumerate(columns):
+                    if col['type'] == 'date' or 'timestamp' in col['type']:
+                        # Для дат используем TO_CHAR чтобы избежать ошибок
+                        select_parts.append(f"TO_CHAR({col['name']}, 'YYYY-MM-DD') as {col['name']}")
+                        date_columns.append(i)
+                    else:
+                        select_parts.append(col['name'])
 
-            sql += " ORDER BY " + columns[0]
+                sql = f"SELECT {', '.join(select_parts)} FROM {table_name}"
+                params = []
 
-            cursor.execute(sql, params)
-            context['data'] = cursor.fetchall()
-            context['filter_column'] = filter_column
-            context['filter_value'] = filter_value
+                if filter_column and filter_value and any(col['name'] == filter_column for col in columns):
+                    sql += f" WHERE CAST({filter_column} AS TEXT) ILIKE %s"
+                    params.append(f'%{filter_value}%')
+
+                sql += f" ORDER BY {columns[0]['name']}"
+
+                cursor.execute(sql, params)
+                raw_data = cursor.fetchall()
+
+                # Форматируем данные для шаблона
+                data = []
+                for row in raw_data:
+                    formatted_row = {
+                        'id': row[0],
+                        'values': []
+                    }
+                    for i, value in enumerate(row):
+                        col_type = columns[i]['type']
+                        formatted_row['values'].append({
+                            'value': value,
+                            'type': col_type
+                        })
+                    data.append(formatted_row)
+
+                context['data'] = data
+                context['filter_column'] = filter_column
+                context['filter_value'] = filter_value
+
+            except Exception as e:
+                messages.error(request, f'Ошибка при загрузке данных: {str(e)}')
+                context['data'] = []
 
         elif operation == 'add':
-            # Подготовка полей для добавления (исключаем ID с автоинкрементом)
+            # Подготовка полей для добавления
             fields = []
 
             # Находим primary key
@@ -2966,41 +3613,60 @@ def universal_crud_operation(request):
             pk_result = cursor.fetchone()
             pk_column = pk_result[0] if pk_result else None
 
-            for col in columns_info:
-                # Пропускаем ID колонку, если она primary key и integer
-                if pk_column and col[0] == pk_column and ('int' in col[1] or 'serial' in col[1]):
-                    continue
-
-                fields.append({
-                    'name': col[0],
-                    'type': col[1],
-                    'nullable': col[2] == 'YES'
-                })
+            for col in columns:
+                # Для primary key integer показываем поле, но с подсказкой
+                if pk_column and col['name'] == pk_column and ('int' in col['type'] or 'serial' in col['type']):
+                    fields.append({
+                        'name': col['name'],
+                        'type': col['type'],
+                        'nullable': False,
+                        'is_pk': True,
+                        'auto_increment': True
+                    })
+                else:
+                    fields.append({
+                        'name': col['name'],
+                        'type': col['udt_name'] if 'ARRAY' in col['type'].upper() else col['type'],
+                        'nullable': col['nullable'],
+                        'is_pk': False,
+                        'auto_increment': False
+                    })
             context['fields'] = fields
 
         elif operation == 'update':
             # Получение записи для обновления
             record_id = request.GET.get('id')
             if record_id:
-                sql = f"SELECT * FROM {table_name} WHERE {columns[0]} = %s"
-                cursor.execute(sql, [record_id])
-                record = cursor.fetchone()
+                try:
+                    # Безопасный запрос с обработкой дат
+                    select_parts = []
+                    for col in columns:
+                        if col['type'] == 'date' or 'timestamp' in col['type']:
+                            select_parts.append(f"TO_CHAR({col['name']}, 'YYYY-MM-DD') as {col['name']}")
+                        else:
+                            select_parts.append(col['name'])
 
-                if record:
-                    fields = []
-                    for i, col in enumerate(columns_info):
-                        # Не позволяем редактировать ID
-                        if i == 0:
-                            continue
+                    sql = f"SELECT {', '.join(select_parts)} FROM {table_name} WHERE {columns[0]['name']} = %s"
+                    cursor.execute(sql, [record_id])
+                    record = cursor.fetchone()
 
-                        fields.append({
-                            'name': col[0],
-                            'type': col[1],
-                            'nullable': col[2] == 'YES',
-                            'value': record[i] if record else None
-                        })
-                    context['fields'] = fields
-                    context['record'] = record
-                    context['record_id'] = record_id
+                    if record:
+                        fields = []
+                        for i, col in enumerate(columns):
+                            # Не позволяем редактировать ID
+                            if i == 0:
+                                continue
+
+                            fields.append({
+                                'name': col['name'],
+                                'type': col['udt_name'] if 'ARRAY' in col['type'].upper() else col['type'],
+                                'nullable': col['nullable'],
+                                'value': record[i] if record else None
+                            })
+                        context['fields'] = fields
+                        context['record'] = record
+                        context['record_id'] = record_id
+                except Exception as e:
+                    messages.error(request, f'Ошибка при загрузке записи: {str(e)}')
 
     return render(request, 'core/universal_crud_operation.html', context)

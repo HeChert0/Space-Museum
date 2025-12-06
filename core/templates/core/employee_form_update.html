@@ -1,0 +1,146 @@
+<!-- core/templates/core/employee_form_update.html -->
+{% extends 'core/base.html' %}
+{% load static %}
+
+{% block content %}
+<a href="{% url 'employee_update' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" class="entity-form" id="employeeForm">
+    {% csrf_token %}
+
+    <div class="form-group">
+        <label for="full_name">ФИО: <span class="required">*</span></label>
+        <input type="text" name="full_name" id="full_name" required
+               value="{{ fields_data.employee.full_name }}"
+               placeholder="Иванов Иван Иванович" maxlength="50">
+        <small>Минимум имя и фамилия, только буквы</small>
+    </div>
+
+    <div class="form-group">
+        <label for="department">Отдел: <span class="required">*</span></label>
+        <select name="department" id="department" required>
+            <option value="">-- Выберите отдел --</option>
+            {% for dept in fields_data.departments %}
+            <option value="{{ dept }}" {% if dept == fields_data.employee.department %}selected{% endif %}>
+                {{ dept }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="position">Должность: <span class="required">*</span></label>
+        <select name="position" id="position" required>
+            <option value="">-- Выберите должность --</option>
+            {% for pos in fields_data.positions_by_department|get_item:fields_data.employee.department %}
+            <option value="{{ pos }}" {% if pos == fields_data.employee.position %}selected{% endif %}>
+                {{ pos }}
+            </option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="hire_date">Дата найма: <span class="required">*</span></label>
+        <input type="text" name="hire_date" id="hire_date" required
+               value="{{ fields_data.employee.hire_date|date:'d.m.Y' }}"
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+    </div>
+
+    <div class="form-group">
+        <label>Телефон: <span class="required">*</span></label>
+        <div style="display: flex; gap: 10px;">
+            <select name="phone_code" id="phone_code" required style="width: 150px;">
+                <option value="+7" {% if fields_data.phone_code == '+7' %}selected{% endif %}>🇷🇺 +7</option>
+                <option value="+375" {% if fields_data.phone_code == '+375' %}selected{% endif %}>🇧🇾 +375</option>
+            </select>
+            <input type="tel" name="phone_number" id="phone_number" required
+                   value="{{ fields_data.phone_number }}"
+                   placeholder="Номер телефона" maxlength="10">
+        </div>
+        <small id="phone_hint">
+            {% if fields_data.phone_code == '+375' %}
+                Белорусский номер: 9 цифр
+            {% else %}
+                Российский номер: 10 цифр
+            {% endif %}
+        </small>
+    </div>
+
+    <div class="form-group">
+        <label for="qualification">Квалификация: <span class="required">*</span></label>
+        <input type="text" name="qualification" id="qualification" required
+               value="{{ fields_data.employee.qualification }}"
+               placeholder="Высшее образование" maxlength="70">
+        <small>Только буквы, 2-70 символов</small>
+    </div>
+
+    <button type="submit" class="btn-submit">{{ operation }}</button>
+</form>
+
+<style>
+    .required { color: #ff0000; }
+    .error-field {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
+    }
+    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+</style>
+
+<script src="{% static 'core/js/validation.js' %}"></script>
+<script>
+    const positionsByDepartment = {{ fields_data.positions_by_department|safe }};
+
+    document.getElementById('department').addEventListener('change', function() {
+        const positionSelect = document.getElementById('position');
+        const positions = positionsByDepartment[this.value] || [];
+
+        positionSelect.innerHTML = '<option value="">-- Выберите должность --</option>';
+
+        if (positions.length > 0) {
+            positionSelect.disabled = false;
+            positions.forEach(pos => {
+                const option = document.createElement('option');
+                option.value = pos;
+                option.textContent = pos;
+                positionSelect.appendChild(option);
+            });
+        } else {
+            positionSelect.disabled = true;
+        }
+    });
+
+    document.getElementById('phone_code').addEventListener('change', function() {
+        const hint = document.getElementById('phone_hint');
+        const phoneInput = document.getElementById('phone_number');
+        if (this.value === '+375') {
+            hint.textContent = 'Белорусский номер: 9 цифр';
+            phoneInput.maxLength = 9;
+        } else {
+            hint.textContent = 'Российский номер: 10 цифр';
+            phoneInput.maxLength = 10;
+        }
+    });
+
+    document.getElementById('phone_number').addEventListener('input', function() {
+        this.value = this.value.replace(/\D/g, '');
+        validatePhone(this, document.getElementById('phone_code').value);
+    });
+</script>
+{% endblock %}

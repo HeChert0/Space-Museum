@@ -1,103 +1,146 @@
 <!-- core/templates/core/mission_form_add.html -->
 {% extends 'core/base.html' %}
+{% load static %}
 
 {% block content %}
 <a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
 
-<h1 class="menu-title">Добавить космическую миссию</h1>
+<h1 class="menu-title">{{ operation }} {{ entity_name }}</h1>
 
-<form method="post" class="entity-form">
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<form method="post" class="entity-form" id="missionForm">
     {% csrf_token %}
 
     <div class="form-group">
-        <label for="title">Название:</label>
-        <input type="text" name="title" required>
+        <label for="title">Название: <span class="required">*</span></label>
+        <input type="text" name="title" id="title" required
+               value="{{ fields_data.form_data.title|default:'' }}"
+               {% if fields_data.error_field == 'title' %}class="error-field"{% endif %}
+               placeholder="Аполлон-11" maxlength="50">
+        <small>Буквы, цифры, дефис и скобки, 2-50 символов</small>
     </div>
 
     <div class="form-group">
-        <label for="country">Страна:</label>
-        <input type="text" name="country" required>
+        <label>Страны (до 5): <span class="required">*</span></label>
+        <div class="checkbox-group" {% if fields_data.error_field == 'countries' %}style="border: 2px solid #ff0000; padding: 10px;"{% endif %}>
+            {% for country in fields_data.countries %}
+            <label class="checkbox-label">
+                <input type="checkbox" name="countries[]" value="{{ country }}"
+                       {% if country in fields_data.form_data.countries %}checked{% endif %}>
+                {{ country }}
+            </label>
+            {% endfor %}
+        </div>
+        <small>Выберите от 1 до 5 стран</small>
     </div>
 
     <div class="form-group">
-        <label for="start_date">Дата начала:</label>
-        <input type="date" name="start_date" required>
+        <label for="start_date">Дата начала: <span class="required">*</span></label>
+        <input type="text" name="start_date" id="start_date" required
+               value="{{ fields_data.form_data.start_date|default:'' }}"
+               {% if fields_data.error_field == 'start_date' %}class="error-field"{% endif %}
+               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
     </div>
 
     <div class="form-group">
         <label for="end_date">Дата окончания:</label>
-        <input type="date" name="end_date" required>
+        <input type="text" name="end_date" id="end_date"
+               value="{{ fields_data.form_data.end_date|default:'' }}"
+               {% if fields_data.error_field == 'end_date' %}class="error-field"{% endif %}
+               class="date-input" placeholder="ДД.ММ.ГГГГ или оставьте пустым" maxlength="10">
+        <small>Можно оставить пустым для текущих миссий</small>
     </div>
 
     <div class="form-group">
         <label>Экипаж:</label>
-        <div id="crew-container">
-            <!-- Члены экипажа будут добавляться сюда -->
+        <div id="crew-container" {% if fields_data.error_field == 'crew' %}class="error-field"{% endif %}>
+            {% for member in fields_data.form_data.crew %}
+            <div class="crew-member-row">
+                <input type="text" name="crew[]" value="{{ member }}" placeholder="ФИО члена экипажа">
+                <button type="button" onclick="removeCrewMember(this)" class="btn-remove-crew">❌</button>
+            </div>
+            {% endfor %}
         </div>
         <button type="button" onclick="addCrewMember()" class="btn-add-crew">➕ Добавить члена экипажа</button>
     </div>
 
     <div class="form-group">
-        <label for="goal">Цель:</label>
-        <input type="text" name="goal" required>
+        <label for="goal">Цель миссии: <span class="required">*</span></label>
+        <textarea name="goal" id="goal" required maxlength="100" minlength="10"
+                  {% if fields_data.error_field == 'goal' %}class="error-field"{% endif %}
+                  placeholder="Описание цели миссии (10-100 символов)">{{ fields_data.form_data.goal|default:'' }}</textarea>
+        <small>Осталось символов: <span id="goalCharsLeft">100</span></small>
     </div>
 
-    <button type="submit" class="btn-submit">Добавить</button>
+    <button type="submit" class="btn-submit">{{ operation }}</button>
 </form>
 
 <style>
-    .crew-member-row {
-        display: flex;
+    .checkbox-group {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
         gap: 10px;
-        margin-bottom: 10px;
-        align-items: center;
-    }
-    .crew-member-row input {
-        flex: 1;
-    }
-    .btn-remove-crew {
-        background: #ff0000;
-        color: white;
-        border: none;
-        padding: 5px 10px;
-        cursor: pointer;
-        border-radius: 3px;
-    }
-    .btn-add-crew {
-        background: #00ff00;
-        color: black;
-        border: none;
-        padding: 8px 15px;
-        cursor: pointer;
-        border-radius: 3px;
         margin-top: 10px;
+    }
+    .checkbox-label {
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .error-field {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
     }
 </style>
 
+<script src="{% static 'core/js/validation.js' %}"></script>
 <script>
-    let crewCount = 0;
-
     function addCrewMember() {
-        if (crewCount >= 20) {
+        const container = document.getElementById('crew-container');
+        if (container.children.length >= 20) {
             alert('Максимум 20 членов экипажа');
             return;
         }
 
-        crewCount++;
-        const container = document.getElementById('crew-container');
         const row = document.createElement('div');
         row.className = 'crew-member-row';
-        row.id = crew-row-${crewCount};
-        row.innerHTML = `
-            <input type="text" name="crew[]" placeholder="ФИО члена экипажа" required>
-            <button type="button" onclick="removeCrewMember(${crewCount})" class="btn-remove-crew">❌</button>
-        `;
+        row.innerHTML = '<input type="text" name="crew[]" placeholder="ФИО члена экипажа">' +
+                       '<button type="button" onclick="removeCrewMember(this)" class="btn-remove-crew">❌</button>';
         container.appendChild(row);
     }
 
-    function removeCrewMember(id) {
-        const row = document.getElementById(crew-row-${id});
-        row.remove();
+    function removeCrewMember(button) {
+        button.parentElement.remove();
     }
+
+    // Счетчик символов для цели
+    document.getElementById('goal').addEventListener('input', function() {
+        const left = 100 - this.value.length;
+        document.getElementById('goalCharsLeft').textContent = left;
+    });
+
+    // Проверка количества выбранных стран
+    document.querySelectorAll('input[name="countries[]"]').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const checked = document.querySelectorAll('input[name="countries[]"]:checked').length;
+            if (checked > 5) {
+                this.checked = false;
+                alert('Можно выбрать максимум 5 стран');
+            }
+        });
+    });
 </script>
 {% endblock %}

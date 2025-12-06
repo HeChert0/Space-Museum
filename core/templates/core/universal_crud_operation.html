@@ -23,7 +23,7 @@
                 <select name="filter_column">
                     <option value="">-- Фильтр по колонке --</option>
                     {% for col in columns %}
-                    <option value="{{ col }}" {% if col == filter_column %}selected{% endif %}>{{ col }}</option>
+                    <option value="{{ col.name }}" {% if col.name == filter_column %}selected{% endif %}>{{ col.name }}</option>
                     {% endfor %}
                 </select>
                 <input type="text" name="filter_value" value="{{ filter_value }}" placeholder="Значение фильтра">
@@ -38,7 +38,7 @@
             <thead>
                 <tr>
                     {% for col in columns %}
-                    <th>{{ col }}</th>
+                    <th>{{ col.name }}</th>
                     {% endfor %}
                     <th>Действия</th>
                 </tr>
@@ -46,15 +46,21 @@
             <tbody>
                 {% for row in data %}
                 <tr>
-                    {% for value in row %}
-                    <td>{{ value|format_array|default:"-" }}</td>
+                    {% for value in row.values %}
+                    <td>
+                        {% if value.type == 'date' %}
+                            {{ value.value|format_date|default:"-" }}
+                        {% else %}
+                            {{ value.value|format_array|default:"-" }}
+                        {% endif %}
+                    </td>
                     {% endfor %}
                     <td>
-                        <a href="?table={{ table_name }}&operation=update&id={{ row.0 }}" class="btn-action btn-edit">✏️</a>
+                        <a href="?table={{ table_name }}&operation=update&id={{ row.id }}" class="btn-action btn-edit">✏️</a>
                         <form method="post" style="display: inline;" onsubmit="return confirm('Удалить запись?')">
                             {% csrf_token %}
                             <input type="hidden" name="action" value="delete">
-                            <input type="hidden" name="record_id" value="{{ row.0 }}">
+                            <input type="hidden" name="record_id" value="{{ row.id }}">
                             <button type="submit" class="btn-action btn-delete">❌</button>
                         </form>
                     </td>
@@ -82,16 +88,30 @@
                 {{ field.name }}
                 {% if field.type %}({{ field.type }}){% endif %}
                 {% if not field.nullable %}<span style="color: red;">*</span>{% endif %}
+                {% if field.is_pk and field.auto_increment %}<span style="color: #00ff00;"> (автогенерация)</span>{% endif %}
             </label>
 
-            {% if field.type == 'text' or field.type == 'character varying' %}
+            {% if field.is_pk and field.auto_increment %}
+                <input type="number" name="{{ field.name }}"
+                       placeholder="Оставьте пустым для автогенерации или введите уникальное значение">
+                <small>ID будет сгенерирован автоматически, если оставить поле пустым</small>
+            {% elif field.type|is_array_field %}
+                <input type="text" name="{{ field.name }}"
+                       placeholder="Введите значения через запятую (например: значение1, значение2, значение3)"
+                       {% if not field.nullable %}required{% endif %}>
+                <small>Для массивов: введите значения через запятую</small>
+            {% elif field.type == 'text' or field.type == 'character varying' %}
                 <textarea name="{{ field.name }}" {% if not field.nullable %}required{% endif %}></textarea>
             {% elif field.type == 'integer' or field.type == 'bigint' %}
                 <input type="number" name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
             {% elif field.type == 'date' %}
-                <input type="date" name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+                <input type="date" name="{{ field.name }}"
+                       class="date-input"
+                       {% if not field.nullable %}required{% endif %}>
+                <small>Выберите дату или введите в формате ДД.ММ.ГГГГ</small>
             {% elif field.type == 'boolean' %}
                 <select name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+                    <option value="">-- Выберите --</option>
                     <option value="true">Да</option>
                     <option value="false">Нет</option>
                 </select>
@@ -116,17 +136,29 @@
         <div class="form-group">
             <label for="{{ field.name }}">
                 {{ field.name }}
+                {% if field.type %}({{ field.type }}){% endif %}
                 {% if not field.nullable %}<span style="color: red;">*</span>{% endif %}
             </label>
 
-            {% if field.type == 'text' or field.type == 'character varying' %}
+            {% if field.type|is_array_field %}
+                <input type="text" name="{{ field.name }}"
+                       value="{{ field.value|format_for_input:field.type }}"
+                       placeholder="Введите значения через запятую (например: значение1, значение2, значение3)"
+                       {% if not field.nullable %}required{% endif %}>
+                <small>Для массивов: введите значения через запятую</small>
+            {% elif field.type == 'text' or field.type == 'character varying' %}
                 <textarea name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>{{ field.value|default:"" }}</textarea>
             {% elif field.type == 'integer' or field.type == 'bigint' %}
                 <input type="number" name="{{ field.name }}" value="{{ field.value|default:"" }}" {% if not field.nullable %}required{% endif %}>
             {% elif field.type == 'date' %}
-                <input type="date" name="{{ field.name }}" value="{{ field.value|default:"" }}" {% if not field.nullable %}required{% endif %}>
+                <input type="date" name="{{ field.name }}"
+                       value="{{ field.value|format_for_input:'date' }}"
+                       class="date-input"
+                       {% if not field.nullable %}required{% endif %}>
+                <small>Выберите дату или введите в формате ДД.ММ.ГГГГ</small>
             {% elif field.type == 'boolean' %}
                 <select name="{{ field.name }}" {% if not field.nullable %}required{% endif %}>
+                    <option value="">-- Выберите --</option>
                     <option value="true" {% if field.value %}selected{% endif %}>Да</option>
                     <option value="false" {% if not field.value %}selected{% endif %}>Нет</option>
                 </select>
@@ -158,16 +190,22 @@
                     <tr>
                         <th><input type="checkbox" onclick="toggleAll(this)"></th>
                         {% for col in columns %}
-                        <th>{{ col }}</th>
+                        <th>{{ col.name }}</th>
                         {% endfor %}
                     </tr>
                 </thead>
                 <tbody>
                     {% for row in data %}
                     <tr>
-                        <td><input type="checkbox" name="delete_ids" value="{{ row.0 }}"></td>
-                        {% for value in row %}
-                        <td>{{ value|default:"-" }}</td>
+                        <td><input type="checkbox" name="delete_ids" value="{{ row.id }}"></td>
+                        {% for value in row.values %}
+                        <td>
+                            {% if value.type == 'date' %}
+                                {{ value.value|format_date|default:"-" }}
+                            {% else %}
+                                {{ value.value|format_array|default:"-" }}
+                            {% endif %}
+                        </td>
                         {% endfor %}
                     </tr>
                     {% empty %}
@@ -193,7 +231,6 @@
     {% endfor %}
 {% endif %}
 
-<!-- Замените стили в universal_crud_operation.html -->
 <style>
     .filter-section {
         margin-bottom: 20px;
@@ -273,6 +310,66 @@
 
     .btn-clear:hover {
         background-color: #ff8800;
+    }
+
+    .message-box {
+        margin: 20px 0;
+        padding: 15px;
+        border: 1px solid #00ff00;
+        background-color: #001100;
+        color: #00ff00;
+    }
+
+    .message-box.error {
+        border-color: #ff0000;
+        color: #ff0000;
+        background-color: #220000;
+    }
+
+    .message-box.success {
+        border-color: #00ff00;
+        color: #00ff00;
+    }
+
+    .form-group small {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #00ff00;
+        opacity: 0.8;
+    }
+
+    /* Стили для полей даты */
+    .date-input {
+        position: relative;
+        background-color: #000000;
+        border: 1px solid #00ff00;
+        color: #00ff00;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        width: 100%;
+    }
+
+    .date-input::-webkit-calendar-picker-indicator {
+        filter: invert(1) hue-rotate(90deg) brightness(0.5) sepia(1) saturate(5);
+        cursor: pointer;
+        opacity: 1;
+    }
+
+    .date-input::-webkit-calendar-picker-indicator:hover {
+        opacity: 0.8;
+    }
+
+    /* Для Firefox */
+    .date-input::-moz-calendar-picker-indicator {
+        filter: invert(1) hue-rotate(90deg) brightness(0.5) sepia(1) saturate(5);
+        cursor: pointer;
+    }
+
+    .date-input:focus {
+        outline: none;
+        border-color: #00ff00;
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
     }
 </style>
 
