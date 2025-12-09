@@ -2445,27 +2445,29 @@ def special_queries(request):
         """,
 
         'lab6_5': """
-            SELECT 
+            SELECT
                 e.exhibition_id,
                 e.title,
                 e.type,
-                COUNT(ex.exhibit_id) as exhibit_count
+                COUNT(ee.exhibit_id) as exhibit_count
             FROM exhibition e
-            INNER JOIN exhibit ex ON e.exhibition_id = ex.exhibition_id
+            INNER JOIN exhibition_exhibit ee ON e.exhibition_id = ee.exhibition_id
             WHERE e.location = 'Главный зал'
             GROUP BY e.exhibition_id, e.title, e.type
-            HAVING COUNT(ex.exhibit_id) > 2
+            HAVING COUNT(ee.exhibit_id) > 2
+            
             EXCEPT ALL
-            SELECT 
+            
+            SELECT
                 e.exhibition_id,
                 e.title,
                 e.type,
-                COUNT(ex.exhibit_id) as exhibit_count
+                COUNT(ee.exhibit_id) as exhibit_count
             FROM exhibition e
-            INNER JOIN exhibit ex ON e.exhibition_id = ex.exhibition_id
+            INNER JOIN exhibition_exhibit ee ON e.exhibition_id = ee.exhibition_id
             WHERE e.type = 'Временная'
             GROUP BY e.exhibition_id, e.title, e.type
-            ORDER BY exhibit_count DESC
+            ORDER BY exhibit_count DESC;
         """,
 
         'lab6_6': """
