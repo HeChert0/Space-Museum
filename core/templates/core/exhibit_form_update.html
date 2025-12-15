@@ -107,43 +107,55 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
-    document.getElementById('title').addEventListener('input', function() {
-        const value = this.value.trim();
-        if (value.length < 2) {
-            showFieldError(this, 'Минимум 2 символа');
-        } else if (value.length > 50) {
-            showFieldError(this, 'Максимум 50 символов');
-        } else if (!/^[а-яА-ЯёЁa-zA-Z0-9\s\(\)\"\-]+$/.test(value)) {
-            showFieldError(this, 'Недопустимые символы');
-        } else {
-            clearFieldError(this);
-        }
-    });
+    document.addEventListener('DOMContentLoaded', function() {
+        // Валидация названия - как у выставок
+        const titleInput = document.getElementById('title');
+        restrictExhibitionTitleInput(titleInput);
 
-    document.getElementById('description').addEventListener('input', function() {
-        const value = this.value.trim();
-        if (value.length < 5) {
-            showFieldError(this, 'Минимум 5 символов');
-        } else if (value.length > 100) {
-            showFieldError(this, 'Максимум 100 символов');
-        } else {
-            clearFieldError(this);
-        }
-    });
+        // Валидация описания с увеличенным лимитом
+        const descriptionInput = document.getElementById('description');
+        descriptionInput.maxLength = 500; // Устанавливаем максимальную длину
 
-    document.getElementById('creation_date').addEventListener('blur', function() {
-        if (this.value.length === 10) {
-            if (validateDate(this)) {
-                const [day, month, year] = this.value.split('.');
-                const inputDate = new Date(year, month - 1, day);
-                const today = new Date();
-                today.setHours(0, 0, 0, 0);
+        descriptionInput.addEventListener('input', function() {
+            const value = this.value.trim();
+            if (value.length < 5) {
+                showFieldError(this, 'Минимум 5 символов');
+            } else if (value.length > 500) {
+                showFieldError(this, 'Максимум 500 символов');
+            } else {
+                clearFieldError(this);
+            }
+        });
 
-                if (inputDate > today) {
-                    showFieldError(this, 'Дата не может быть в будущем');
+        // Валидация и форматирование даты
+        const creationDateInput = document.getElementById('creation_date');
+
+        creationDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        creationDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        creationDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                if (validateDate(this)) {
+                    const [day, month, year] = this.value.split('.');
+                    const inputDate = new Date(year, month - 1, day);
+                    const today = new Date();
+                    today.setHours(0, 0, 0, 0);
+
+                    if (inputDate > today) {
+                        showFieldError(this, 'Дата не может быть в будущем');
+                    }
                 }
             }
-        }
+        });
     });
 </script>
 {% endblock %}

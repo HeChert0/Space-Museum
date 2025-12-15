@@ -7,6 +7,20 @@
 
 <h1 class="menu-title">{{ operation }} посетителя</h1>
 
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
 <form method="post" class="entity-form" id="visitorForm">
     {% csrf_token %}
 
@@ -15,7 +29,7 @@
         <input type="text" name="full_name" id="full_name" required
                value="{{ fields_data.visitor.full_name }}"
                placeholder="Иванов Иван Иванович" maxlength="50">
-        <small>Минимум имя и фамилия, только буквы</small>
+        <small>Минимум имя и фамилия, только буквы и дефис</small>
     </div>
 
     <div class="form-group">
@@ -68,17 +82,79 @@
 
 <style>
     .required { color: #ff0000; }
-    .field-error { color: #ff0000; font-size: 12px; margin-top: 5px; }
-    input:invalid, select:invalid { border-color: #ff0000; }
-    input:valid, select:valid { border-color: #00ff00; }
     small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
-    document.getElementById('review').addEventListener('input', function() {
-        const left = 100 - this.value.length;
-        document.getElementById('reviewCharsLeft').textContent = left;
+    document.addEventListener('DOMContentLoaded', function() {
+        // Валидация ФИО
+        const fioInput = document.getElementById('full_name');
+        restrictFIOInput(fioInput);
+
+        // Валидация дат
+        const birthDateInput = document.getElementById('birth_date');
+        const visitDateInput = document.getElementById('visit_date');
+
+        // Форматирование и валидация даты рождения
+        birthDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        birthDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+            }
+        });
+
+        birthDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Форматирование и валидация даты посещения
+        visitDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        visitDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+            }
+        });
+
+        visitDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Валидация отзыва
+        const reviewInput = document.getElementById('review');
+        const reviewCounter = document.getElementById('reviewCharsLeft');
+
+        // Инициализация счетчика
+        const currentLength = reviewInput.value.length;
+        reviewCounter.textContent = 100 - currentLength;
+
+        reviewInput.addEventListener('input', function() {
+            const left = 100 - this.value.length;
+            reviewCounter.textContent = left;
+
+            const value = this.value.trim();
+            if (value && value.length < 5) {
+                showFieldError(this, 'Отзыв слишком короткий (минимум 5 символов)');
+            } else if (value && /^[!@#$%^&*()_+=\-\s]+$/.test(value)) {
+                showFieldError(this, 'Отзыв не может состоять только из специальных символов');
+            } else {
+                clearFieldError(this);
+            }
+        });
     });
 </script>
 {% endblock %}

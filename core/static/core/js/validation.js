@@ -23,7 +23,6 @@ function showFieldError(field, message) {
     }
 }
 
-
 // Функция для очистки ошибки
 function clearFieldError(field) {
     field.style.borderColor = '#00ff00';
@@ -65,7 +64,6 @@ function formatDateInput(field) {
     }
 }
 
-
 function validateDate(field) {
     const value = field.value;
     const pattern = /^(\d{2})\.(\d{2})\.(\d{4})$/;
@@ -87,37 +85,147 @@ function validateDate(field) {
     return true;
 }
 
-function validateFIO(field) {
-    const value = field.value.trim();
+function validateFIO(input) {
+    const value = input.value.trim();
 
-    if (value.length < 2) {
-        showFieldError(field, 'ФИО должно содержать минимум 2 символа');
-        return false;
+    // Разрешаем только буквы (русские и английские), пробелы и дефис
+    const validCharsPattern = /^[а-яА-ЯёЁa-zA-Z\-\s]*$/;
+
+    // Проверяем каждый введенный символ
+    if (!validCharsPattern.test(value)) {
+        // Удаляем недопустимые символы
+        input.value = value.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, '');
+        showFieldError(input, 'Только буквы и дефис');
+        return;
+    }
+
+    // Проверка на двойные дефисы
+    if (value.includes('--')) {
+        input.value = value.replace(/--+/g, '-');
+        showFieldError(input, 'Недопустимы двойные дефисы');
+        return;
+    }
+
+    // Проверка на дефис в начале или конце слова
+    const words = value.split(/\s+/);
+    for (let word of words) {
+        if (word.startsWith('-') || word.endsWith('-')) {
+            showFieldError(input, 'Слова не могут начинаться или заканчиваться дефисом');
+            return;
+        }
+    }
+
+    // Базовые проверки
+    if (value.length < 5) {
+        showFieldError(input, 'ФИО слишком короткое');
+        return;
     }
 
     if (value.length > 50) {
-        showFieldError(field, 'ФИО не может быть длиннее 50 символов');
-        return false;
+        showFieldError(input, 'ФИО слишком длинное');
+        return;
     }
 
-    if (/\d/.test(value)) {
-        showFieldError(field, 'ФИО не может содержать цифры');
-        return false;
+    const parts = value.split(/\s+/).filter(p => p.length > 0);
+    if (parts.length < 2) {
+        showFieldError(input, 'Введите минимум фамилию и имя');
+        return;
     }
 
-    if (/[!@#$%^&*()_+=\[\]{};:"\\|,.<>/?`~]/.test(value)) {
-        showFieldError(field, 'ФИО не может содержать специальные символы');
-        return false;
+    // Проверка на максимум 3 части (Фамилия Имя Отчество)
+    if (parts.length > 3) {
+        showFieldError(input, 'ФИО должно содержать максимум 3 части (Фамилия Имя Отчество)');
+        return;
     }
 
-    const words = value.split(/\s+/);
-    if (words.length < 2) {
-        showFieldError(field, 'Введите имя и фамилию');
-        return false;
+    // Проверяем, что каждая часть начинается с заглавной буквы
+    for (let part of parts) {
+        if (part.length > 0 && part[0] !== part[0].toUpperCase()) {
+            showFieldError(input, 'Каждая часть ФИО должна начинаться с заглавной буквы');
+            return;
+        }
     }
 
-    clearFieldError(field);
-    return true;
+    clearFieldError(input);
+}
+
+function restrictFIOInput(input) {
+    // Устанавливаем максимальную длину
+    input.maxLength = 50;
+
+    // Блокируем недопустимые символы при вводе
+    input.addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+
+        // Если это пробел
+        if (char === ' ') {
+            // Подсчитываем количество пробелов в текущем значении
+            const currentSpaces = (this.value.match(/ /g) || []).length;
+
+            // Если уже есть 2 пробела, блокируем ввод
+            if (currentSpaces >= 2) {
+                e.preventDefault();
+                showFieldError(this, 'Максимум 3 части ФИО');
+                return false;
+            }
+
+            // Не даем вводить пробел в начале
+            if (this.value.length === 0) {
+                e.preventDefault();
+                return false;
+            }
+
+            // Не даем вводить два пробела подряд
+            if (this.value[this.value.length - 1] === ' ') {
+                e.preventDefault();
+                return false;
+            }
+        }
+
+        // Блокируем все символы кроме букв, дефиса и пробела
+        const pattern = /^[а-яА-ЯёЁa-zA-Z\-]$/;
+        if (!pattern.test(char) && char !== ' ') {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    input.addEventListener('input', function(e) {
+        // Удаляем недопустимые символы
+        let value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, '');
+
+        // Заменяем множественные пробелы на одинарные
+        value = value.replace(/\s+/g, ' ');
+
+        // Проверяем количество пробелов после очистки
+        const spaces = (value.match(/ /g) || []).length;
+
+        // Если больше 2 пробелов, обрезаем
+        if (spaces > 2) {
+            const parts = value.split(' ');
+            value = parts.slice(0, 3).join(' ');
+        }
+
+        this.value = value;
+        validateFIO(this);
+    });
+
+    // Блокируем вставку с проверкой
+    input.addEventListener('paste', function(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        let cleanedText = text.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, '');
+        cleanedText = cleanedText.replace(/\s+/g, ' ').trim();
+
+        // Обрезаем до 3 слов
+        const words = cleanedText.split(' ');
+        if (words.length > 3) {
+            cleanedText = words.slice(0, 3).join(' ');
+        }
+
+        this.value = cleanedText;
+        validateFIO(this);
+    });
 }
 
 // Запрет ввода цифр
@@ -144,7 +252,6 @@ function validatePhone(field, countryCode) {
     clearFieldError(field);
     return true;
 }
-
 
 function validateTextField(field, minLength, maxLength, allowNumbers = false) {
     const value = field.value.trim();
@@ -196,9 +303,20 @@ function validateTitleWithNumbers(field, maxLength = 50) {
     return true;
 }
 
-// Валидация числовых полей
+// Обновленная функция validateNumberField
 function validateNumberField(field, min, max) {
     const value = parseInt(field.value);
+    const strValue = field.value.trim();
+
+    if (strValue === '') {
+        showFieldError(field, 'Обязательное поле');
+        return false;
+    }
+
+    if (strValue.length < 2 && strValue.length > 0) {
+        showFieldError(field, 'Минимум 2 цифры');
+        return false;
+    }
 
     if (isNaN(value)) {
         showFieldError(field, 'Введите число');
@@ -217,6 +335,175 @@ function validateNumberField(field, min, max) {
 
     clearFieldError(field);
     return true;
+}
+
+// Функция для ограничения ввода только цифрами
+function restrictNumberInput(input, min, max) {
+    const maxLength = max.toString().length;
+    input.maxLength = maxLength;
+
+    input.addEventListener('keydown', function(e) {
+        // Разрешаем управляющие клавиши
+        if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Tab' ||
+            e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+            e.ctrlKey || e.metaKey) {
+            return true;
+        }
+
+        // Блокируем все кроме цифр
+        if (!/^\d$/.test(e.key)) {
+            e.preventDefault();
+            return false;
+        }
+
+        // Проверяем, не превысит ли значение максимум
+        const currentValue = this.value;
+        const selectionStart = this.selectionStart;
+        const selectionEnd = this.selectionEnd;
+        const newValue = currentValue.substring(0, selectionStart) + e.key + currentValue.substring(selectionEnd);
+
+        if (newValue.length > maxLength) {
+            e.preventDefault();
+            showFieldError(this, `Максимум ${maxLength} цифры`);
+            return false;
+        }
+    });
+
+    input.addEventListener('input', function() {
+        // Удаляем все нецифровые символы
+        this.value = this.value.replace(/\D/g, '');
+
+        // Валидируем значение
+        validateNumberField(this, min, max);
+    });
+
+    input.addEventListener('paste', function(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const cleanedText = text.replace(/\D/g, '').substring(0, maxLength);
+
+        this.value = cleanedText;
+        validateNumberField(this, min, max);
+    });
+}
+
+// Специальная функция для валидации цены (с поддержкой десятичных)
+function restrictPriceInput(input, min, max) {
+    const maxLength = max.toString().length + 3; // +3 для точки и 2 знаков после запятой
+
+    input.addEventListener('keydown', function(e) {
+        // Разрешаем управляющие клавиши
+        if (e.key === 'Backspace' || e.key === 'Delete' || e.key === 'Tab' ||
+            e.key === 'Enter' || e.key === 'ArrowLeft' || e.key === 'ArrowRight' ||
+            e.ctrlKey || e.metaKey) {
+            return true;
+        }
+
+        // Разрешаем одну точку для десятичных
+        if (e.key === '.' && !this.value.includes('.')) {
+            return true;
+        }
+
+        // Блокируем все кроме цифр
+        if (!/^\d$/.test(e.key)) {
+            e.preventDefault();
+            return false;
+        }
+
+        // Проверяем длину целой части
+        const parts = this.value.split('.');
+        const integerPart = parts[0];
+
+        // Если нет точки и целая часть уже 3 символа - блокируем
+        if (!this.value.includes('.') && integerPart.length >= 3) {
+            e.preventDefault();
+            showFieldError(this, 'Максимум 300');
+            return false;
+        }
+    });
+
+    input.addEventListener('input', function() {
+        // Удаляем все кроме цифр и точки
+        let value = this.value.replace(/[^\d.]/g, '');
+
+        // Убираем лишние точки
+        const parts = value.split('.');
+        if (parts.length > 2) {
+            value = parts[0] + '.' + parts.slice(1).join('');
+        }
+
+        // Ограничиваем целую часть до 3 цифр
+        if (parts[0].length > 3) {
+            parts[0] = parts[0].substring(0, 3);
+        }
+
+        // Ограничиваем 2 знака после запятой
+        if (parts.length === 2 && parts[1].length > 2) {
+            value = parts[0] + '.' + parts[1].substring(0, 2);
+        } else if (parts.length === 2) {
+            value = parts[0] + '.' + parts[1];
+        } else {
+            value = parts[0];
+        }
+
+        this.value = value;
+        validatePrice(this, min, max);
+    });
+}
+
+// Функция для валидации названий миссий (с цифрами, тире и кавычками)
+function validateMissionTitle(input) {
+    const value = input.value.trim();
+
+    if (value.length < 2) {
+        showFieldError(input, 'Минимум 2 символа');
+        return false;
+    }
+
+    if (value.length > 50) {
+        showFieldError(input, 'Максимум 50 символов');
+        return false;
+    }
+
+    // Проверка на недопустимые символы (разрешаем буквы, цифры, пробелы, тире и кавычки)
+    if (!/^[а-яА-ЯёЁa-zA-Z0-9\s\-"']+$/.test(value)) {
+        showFieldError(input, 'Только буквы, цифры, тире и кавычки');
+        return false;
+    }
+
+    clearFieldError(input);
+    return true;
+}
+
+// Функция для ограничения ввода в названиях миссий
+function restrictMissionTitleInput(input) {
+    input.maxLength = 50;
+
+    input.addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+
+        // Разрешаем только буквы, цифры, пробелы, тире, и кавычки
+        const pattern = /^[а-яА-ЯёЁa-zA-Z0-9\s\-"']$/;
+        if (!pattern.test(char)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    input.addEventListener('input', function() {
+        // Удаляем недопустимые символы
+        this.value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s\-"']/g, '');
+        validateMissionTitle(this);
+    });
+
+    input.addEventListener('paste', function(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const cleanedText = text.replace(/[^а-яА-ЯёЁa-zA-Z0-9\s\-"']/g, '');
+
+        this.value = cleanedText.substring(0, 50);
+        validateMissionTitle(this);
+    });
 }
 
 function validatePrice(field, min, max) {
@@ -239,6 +526,59 @@ function validatePrice(field, min, max) {
 
     clearFieldError(field);
     return true;
+}
+
+// Функция для валидации названий с кавычками и тире
+function validateExhibitionTitle(input) {
+    const value = input.value.trim();
+
+    if (value.length < 2) {
+        showFieldError(input, 'Минимум 2 символа');
+        return false;
+    }
+
+    if (value.length > 50) {
+        showFieldError(input, 'Максимум 50 символов');
+        return false;
+    }
+
+    // Проверка на недопустимые символы
+    if (!/^[а-яА-ЯёЁa-zA-Z\s\-"']+$/.test(value)) {
+        showFieldError(input, 'Только буквы, пробелы, тире и кавычки');
+        return false;
+    }
+
+    clearFieldError(input);
+    return true;
+}
+
+// Функция для ограничения ввода в названиях выставок
+function restrictExhibitionTitleInput(input) {
+    input.addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+
+        // Разрешаем только буквы, пробелы, тире, и кавычки
+        const pattern = /^[а-яА-ЯёЁa-zA-Z\s\-"']$/;
+        if (!pattern.test(char)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    input.addEventListener('input', function() {
+        // Удаляем недопустимые символы
+        this.value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z\s\-"']/g, '');
+        validateExhibitionTitle(this);
+    });
+
+    input.addEventListener('paste', function(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const cleanedText = text.replace(/[^а-яА-ЯёЁa-zA-Z\s\-"']/g, '');
+
+        this.value = cleanedText;
+        validateExhibitionTitle(this);
+    });
 }
 
 // Инициализация валидации при загрузке страницы
@@ -315,5 +655,4 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
-
 });

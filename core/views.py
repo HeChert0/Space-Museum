@@ -3875,3 +3875,226 @@ def universal_crud_operation(request):
                     messages.error(request, f'Ошибка при загрузке записи: {str(e)}')
 
     return render(request, 'core/universal_crud_operation.html', context)
+
+
+def table_save_sql(request):
+    """Сохранение таблицы в SQL файл"""
+    if request.method == 'POST':
+        table_name = request.POST.get('table_name')
+        include_data = request.POST.get('include_data') == '1'
+
+        try:
+            with connection.cursor() as cursor:
+                # Получаем структуру таблицы для PostgreSQL
+                cursor.execute("""
+                    SELECT 
+                        column_name,
+                        data_type,
+                        character_maximum_length,
+                        is_nullable,
+                        column_default
+                    FROM information_schema.columns
+                    WHERE table_name = %s
+                    AND table_schema = 'public'
+                    ORDER BY ordinal_position
+                """, [table_name])
+
+                columns = cursor.fetchall()
+
+                if not columns:
+                    messages.error(request, f'Таблица {table_name} не найдена')
+                    return redirect('table_save_sql')
+
+                # Начинаем формировать SQL файл
+                sql_content = f"-- SQL dump for table: {table_name}\n"
+                sql_content += f"-- Generated at: {datetime.now()}\n"
+                sql_content += f"-- Include data: {'Yes' if include_data else 'No'}\n\n"
+
+                # Добавляем DROP TABLE IF EXISTS
+                sql_content += f"DROP TABLE IF EXISTS {table_name} CASCADE;\n\n"
+
+                # Формируем CREATE TABLE
+                sql_content += f"CREATE TABLE {table_name} (\n"
+
+                column_definitions = []
+                for col in columns:
+                    if len(col) >= 5:  # Проверяем, что есть все нужные элементы
+                        col_name = col[0]
+                        data_type = col[1]
+                        max_length = col[2] if len(col) > 2 else None
+                        is_nullable = col[3] if len(col) > 3 else 'YES'
+                        default = col[4] if len(col) > 4 else None
+
+                        # Формируем определение колонки
+                        col_def = f"    {col_name} {data_type}"
+
+                        if data_type in ['character varying', 'varchar'] and max_length:
+                            col_def += f"({max_length})"
+                        elif data_type == 'numeric' and max_length:
+                            col_def += f"({max_length})"
+
+                        if is_nullable == 'NO':
+                            col_def += " NOT NULL"
+
+                        if default:
+                            col_def += f" DEFAULT {default}"
+
+                        column_definitions.append(col_def)
+
+                sql_content += ",\n".join(column_definitions)
+
+                # Получаем первичные ключи
+                cursor.execute("""
+                    SELECT kcu.column_name
+                    FROM information_schema.table_constraints tc
+                    JOIN information_schema.key_column_usage kcu 
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    WHERE tc.constraint_type = 'PRIMARY KEY'
+                    AND tc.table_name = %s
+                    AND tc.table_schema = 'public'
+                    ORDER BY kcu.ordinal_position
+                """, [table_name])
+
+                pk_columns = [row[0] for row in cursor.fetchall()]
+                if pk_columns:
+                    sql_content += f",\n    PRIMARY KEY ({', '.join(pk_columns)})"
+
+                sql_content += "\n);\n\n"
+
+                # Получаем внешние ключи
+                cursor.execute("""
+                    SELECT
+                        tc.constraint_name,
+                        kcu.column_name,
+                        ccu.table_name AS foreign_table_name,
+                        ccu.column_name AS foreign_column_name
+                    FROM information_schema.table_constraints AS tc
+                    JOIN information_schema.key_column_usage AS kcu
+                        ON tc.constraint_name = kcu.constraint_name
+                        AND tc.table_schema = kcu.table_schema
+                    JOIN information_schema.constraint_column_usage AS ccu
+                        ON ccu.constraint_name = tc.constraint_name
+                        AND ccu.table_schema = tc.table_schema
+                    WHERE tc.constraint_type = 'FOREIGN KEY' 
+                    AND tc.table_name = %s
+                    AND tc.table_schema = 'public'
+                """, [table_name])
+
+                foreign_keys = cursor.fetchall()
+                for fk in foreign_keys:
+                    if len(fk) >= 4:  # Проверяем наличие всех элементов
+                        constraint_name = fk[0]
+                        column_name = fk[1]
+                        ref_table = fk[2]
+                        ref_column = fk[3]
+                        sql_content += f"ALTER TABLE {table_name} ADD CONSTRAINT {constraint_name} "
+                        sql_content += f"FOREIGN KEY ({column_name}) REFERENCES {ref_table}({ref_column});\n"
+
+                if foreign_keys:
+                    sql_content += "\n"
+
+                # Если нужно включить данные
+                if include_data:
+                    cursor.execute(f'SELECT * FROM "{table_name}"')
+                    rows = cursor.fetchall()
+
+                    if rows:
+                        # Получаем названия колонок
+                        column_names = [desc[0] for desc in cursor.description]
+                        columns_str = ', '.join([f'"{col}"' for col in column_names])
+
+                        sql_content += f"-- Data for table {table_name}\n"
+
+                        # Формируем INSERT запросы
+                        for row in rows:
+                            values = []
+                            for val in row:
+                                if val is None:
+                                    values.append('NULL')
+                                elif isinstance(val, bool):
+                                    values.append('TRUE' if val else 'FALSE')
+                                elif isinstance(val, (int, float)):
+                                    values.append(str(val))
+                                elif isinstance(val, datetime):
+                                    values.append(f"'{val.strftime('%Y-%m-%d %H:%M:%S')}'")
+                                else:
+                                    # Экранируем строки
+                                    escaped_val = str(val).replace("'", "''")
+                                    values.append(f"'{escaped_val}'")
+
+                            sql_content += f'INSERT INTO "{table_name}" ({columns_str}) VALUES ({", ".join(values)});\n'
+                else:
+                    sql_content += "-- Data not included (checkbox was unchecked)\n"
+
+                # Создаем HTTP ответ с файлом
+                response = HttpResponse(sql_content, content_type='application/sql')
+                response[
+                    'Content-Disposition'] = f'attachment; filename="{table_name}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sql"'
+                return response
+
+        except Exception as e:
+            messages.error(request, f'Ошибка при сохранении таблицы: {str(e)}')
+            import traceback
+            print(traceback.format_exc())  # Для отладки
+
+    # Получаем список пользовательских таблиц для PostgreSQL
+    user_tables = []
+    django_tables = ['django_migrations', 'django_content_type', 'auth_permission',
+                     'auth_group', 'auth_group_permissions', 'auth_user',
+                     'auth_user_groups', 'auth_user_user_permissions',
+                     'django_admin_log', 'django_session']
+
+    # Добавим таблицы, созданные вашим приложением
+    app_tables = ['core_visitor', 'core_employee', 'core_exhibition',
+                  'core_excursion', 'core_exhibit', 'core_mission']
+
+    with connection.cursor() as cursor:
+        cursor.execute("""
+            SELECT tablename 
+            FROM pg_catalog.pg_tables 
+            WHERE schemaname = 'public'
+            ORDER BY tablename
+        """)
+        all_tables = [table[0] for table in cursor.fetchall()]
+        user_tables = [t for t in all_tables
+                       if t not in django_tables
+                       and not t.startswith('django_')
+                       and t not in app_tables]
+
+    return render(request, 'core/table_save_sql.html', {
+        'user_tables': user_tables
+    })
+
+
+def table_restore_sql(request):
+    """Восстановление таблицы из SQL файла"""
+    if request.method == 'POST' and 'sql_file' in request.FILES:
+        sql_file = request.FILES['sql_file']
+        force_restore = request.POST.get('force_restore') == '1'
+
+        try:
+            # Читаем содержимое файла
+            sql_content = sql_file.read().decode('utf-8')
+
+            with connection.cursor() as cursor:
+                # Выполняем SQL команды в транзакции
+                with transaction.atomic():
+                    # Если force_restore, сначала извлекаем имя таблицы и удаляем ее
+                    if force_restore:
+                        # Ищем имя таблицы в CREATE TABLE
+                        import re
+                        table_match = re.search(r'CREATE TABLE\s+(\w+)', sql_content, re.IGNORECASE)
+                        if table_match:
+                            table_name = table_match.group(1)
+                            cursor.execute(f"DROP TABLE IF EXISTS {table_name} CASCADE")
+
+                    # Выполняем все SQL команды
+                    cursor.execute(sql_content)
+
+                    messages.success(request, 'Таблица успешно восстановлена из SQL файла!')
+
+        except Exception as e:
+            messages.error(request, f'Ошибка при восстановлении: {str(e)}')
+
+    return render(request, 'core/table_restore_sql.html')

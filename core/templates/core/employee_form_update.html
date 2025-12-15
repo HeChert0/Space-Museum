@@ -104,6 +104,57 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // *** ДИНАМИЧЕСКАЯ ВАЛИДАЦИЯ ФИО *** //
+    const fioInput = document.getElementById('full_name');
+    restrictFIOInput(fioInput); // Используем функцию из validation.js
+
+    // *** ВАЛИДАЦИЯ КВАЛИФИКАЦИИ С ДЕФИСОМ *** //
+    const qualificationInput = document.getElementById('qualification');
+
+    qualificationInput.addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+        const pattern = /[а-яА-ЯёЁa-zA-Z\-\s]/; // Добавлен дефис
+        if (!pattern.test(char)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    qualificationInput.addEventListener('input', function() {
+        this.value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, ''); // Добавлен дефис
+
+        // Проверка на двойные дефисы
+        if (this.value.includes('--')) {
+            this.value = this.value.replace(/--+/g, '-');
+            showFieldError(this, 'Недопустимы двойные дефисы');
+        } else {
+            validateTextField(this, 2, 70, false);
+        }
+    });
+
+    // *** ВАЛИДАЦИЯ И ФОРМАТИРОВАНИЕ ДАТЫ НАЙМА *** //
+    const hireDateInput = document.getElementById('hire_date');
+
+    hireDateInput.addEventListener('input', function() {
+        formatDateInput(this);
+    });
+
+    hireDateInput.addEventListener('blur', function() {
+        if (this.value.length === 10) {
+            validateDate(this);
+        }
+    });
+
+    hireDateInput.addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+        // Разрешаем только цифры
+        if (!/\d/.test(char)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    // Остальной код без изменений...
     const positionsByDepartment = {{ fields_data.positions_by_department|safe }};
 
     function updatePositions(departmentValue, selectedPosition) {

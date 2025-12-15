@@ -7,20 +7,37 @@
 
 <h1 class="menu-title">{{ operation }} посетителя</h1>
 
+{% if messages %}
+    {% for message in messages %}
+        <div class="alert alert-{{ message.tags }}" style="
+            padding: 10px;
+            margin-bottom: 20px;
+            border: 2px solid {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            color: {% if message.tags == 'error' %}#ff0000{% else %}#00ff00{% endif %};
+            background: rgba({% if message.tags == 'error' %}255,0,0{% else %}0,255,0{% endif %}, 0.1);
+        ">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
 <form method="post" class="entity-form" id="visitorForm">
     {% csrf_token %}
 
     <div class="form-group">
         <label for="full_name">ФИО: <span class="required">*</span></label>
         <input type="text" name="full_name" id="full_name" required
-               placeholder="Иванов Иван Иванович" maxlength="50">
-        <small>Минимум имя и фамилия, только буквы</small>
+               placeholder="Иванов Иван Иванович" maxlength="100">
+        <!-- *** ИЗМЕНЕНО: обновлена подсказка и увеличен maxlength *** -->
+        <small>Минимум имя и фамилия, только буквы и дефис</small>
+        <div class="field-error" id="full_name_error"></div>
     </div>
 
     <div class="form-group">
         <label for="birth_date">Дата рождения: <span class="required">*</span></label>
         <input type="text" name="birth_date" id="birth_date" required
                class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <div class="field-error" id="birth_date_error"></div>
     </div>
 
     <div class="form-group">
@@ -47,6 +64,7 @@
         <label for="visit_date">Дата посещения: <span class="required">*</span></label>
         <input type="text" name="visit_date" id="visit_date" required
                class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <div class="field-error" id="visit_date_error"></div>
     </div>
 
     <div class="form-group">
@@ -54,6 +72,7 @@
         <textarea name="review" id="review" maxlength="100"
                   placeholder="Ваш отзыв (необязательно, до 100 символов)"></textarea>
         <small>Осталось символов: <span id="reviewCharsLeft">100</span></small>
+        <div class="field-error" id="review_error"></div>
     </div>
 
     <button type="submit" class="btn-submit">{{ operation }}</button>
@@ -68,14 +87,20 @@
         color: #ff0000;
         font-size: 12px;
         margin-top: 5px;
+        display: none;
     }
 
-    input:invalid, select:invalid {
-        border-color: #ff0000;
+    .field-error.show {
+        display: block;
     }
 
-    input:valid, select:valid {
-        border-color: #00ff00;
+    input.error, select.error, textarea.error {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+    }
+
+    input.valid, select.valid, textarea.valid {
+        border-color: #00ff00 !important;
     }
 
     small {
@@ -89,10 +114,165 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
-    // Счетчик символов для отзыва
-    document.getElementById('review').addEventListener('input', function() {
-        const left = 100 - this.value.length;
-        document.getElementById('reviewCharsLeft').textContent = left;
+    // *** ДОБАВЛЕНО: Функции для отображения/скрытия ошибок *** //
+    function showFieldError(input, message) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        input.classList.add('error');
+        input.classList.remove('valid');
+    }
+
+    function clearFieldError(input) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        }
+        input.classList.remove('error');
+        input.classList.add('valid');
+    }
+
+    // *** ДОБАВЛЕНО: Функция валидации дат *** //
+    function validateDateField(input, fieldName) {
+        const value = input.value.trim();
+
+        if (!value) {
+            showFieldError(input, fieldName + ' обязательна');
+            return false;
+        }
+
+        // Проверка формата
+        const datePattern = /^(\d{2})\.(\d{2})\.(\d{4})$/;
+        const match = value.match(datePattern);
+
+        if (!match) {
+            showFieldError(input, 'Используйте формат ДД.ММ.ГГГГ');
+            return false;
+        }
+
+        const day = parseInt(match[1]);
+        const month = parseInt(match[2]);
+        const year = parseInt(match[3]);
+
+        // Проверка корректности даты
+        const date = new Date(year, month - 1, day);
+        if (date.getDate() !== day || date.getMonth() !== month - 1 || date.getFullYear() !== year) {
+            showFieldError(input, 'Некорректная дата');
+            return false;
+        }
+
+        clearFieldError(input);
+        return true;
+    }
+
+    // *** ДОБАВЛЕНО: Инициализация валидации при загрузке страницы *** //
+    document.addEventListener('DOMContentLoaded', function() {
+        // Применение валидации для ФИО
+        const fioInput = document.getElementById('full_name');
+        if (fioInput) {
+            // Применяем ограничение на ввод недопустимых символов
+            restrictFIOInput(fioInput);
+
+            // Валидация при вводе
+            fioInput.addEventListener('input', function() {
+                validateFIO(this);
+            });
+
+            // Валидация при потере фокуса
+            fioInput.addEventListener('blur', function() {
+                validateFIO(this);
+            });
+        }
+
+        // Валидация дат
+        const birthDateInput = document.getElementById('birth_date');
+        const visitDateInput = document.getElementById('visit_date');
+
+        if (birthDateInput) {
+            birthDateInput.addEventListener('input', function() {
+                validateDateField(this, 'Дата рождения');
+            });
+            birthDateInput.addEventListener('blur', function() {
+                validateDateField(this, 'Дата рождения');
+            });
+        }
+
+        if (visitDateInput) {
+            visitDateInput.addEventListener('input', function() {
+                validateDateField(this, 'Дата посещения');
+            });
+            visitDateInput.addEventListener('blur', function() {
+                validateDateField(this, 'Дата посещения');
+            });
+        }
+
+        // Валидация отзыва
+        const reviewInput = document.getElementById('review');
+        if (reviewInput) {
+            reviewInput.addEventListener('input', function() {
+                const value = this.value.trim();
+                const left = 100 - this.value.length;
+                document.getElementById('reviewCharsLeft').textContent = left;
+
+                if (value && value.length < 5) {
+                    showFieldError(this, 'Отзыв слишком короткий (минимум 5 символов)');
+                } else if (value && /^[!@#$%^&*()_+=\-\s]+$/.test(value)) {
+                    showFieldError(this, 'Отзыв не может состоять только из специальных символов');
+                } else {
+                    clearFieldError(this);
+                }
+            });
+        }
+
+        // Валидация формы перед отправкой
+        const form = document.getElementById('visitorForm');
+        if (form) {
+            form.addEventListener('submit', function(e) {
+                let isValid = true;
+
+                // Проверяем ФИО
+                if (fioInput) {
+                    validateFIO(fioInput);
+                    if (fioInput.classList.contains('error')) {
+                        isValid = false;
+                    }
+                }
+
+                // Проверяем даты
+                if (birthDateInput && !validateDateField(birthDateInput, 'Дата рождения')) {
+                    isValid = false;
+                }
+                if (visitDateInput && !validateDateField(visitDateInput, 'Дата посещения')) {
+                    isValid = false;
+                }
+
+                // Проверяем гражданство
+                const citizenshipSelect = document.getElementById('citizenship');
+                if (citizenshipSelect && !citizenshipSelect.value) {
+                    showFieldError(citizenshipSelect, 'Выберите гражданство');
+                    isValid = false;
+                } else if (citizenshipSelect) {
+                    clearFieldError(citizenshipSelect);
+                }
+
+                // Проверяем тип билета
+                const ticketTypeSelect = document.getElementById('ticket_type');
+                if (ticketTypeSelect && !ticketTypeSelect.value) {
+                    showFieldError(ticketTypeSelect, 'Выберите тип билета');
+                    isValid = false;
+                } else if (ticketTypeSelect) {
+                    clearFieldError(ticketTypeSelect);
+                }
+
+                if (!isValid) {
+                    e.preventDefault();
+                    alert('Пожалуйста, исправьте ошибки в форме');
+                }
+            });
+        }
     });
 </script>
 {% endblock %}

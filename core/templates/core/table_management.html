@@ -5,7 +5,7 @@
 <a href="{% url 'home' %}" class="back-button">← Назад</a>
 
 <div class="menu-container">
-    <h1 class="menu-title">🗃️ УПРАВЛЕНИЕ ТАБЛИЦАМИ БД 🗃️</h1>
+    <h1 class="menu-title">🗃 УПРАВЛЕНИЕ ТАБЛИЦАМИ БД 🗃</h1>
 
     <a href="{% url 'table_add' %}" class="menu-button">
         ➕ Создать новую таблицу
@@ -13,6 +13,14 @@
 
     <a href="{% url 'table_list' %}" class="menu-button">
         ❌ Удалить таблицу
+    </a>
+
+    <a href="{% url 'table_save_sql' %}" class="menu-button">
+        💾 Сохранить таблицу в SQL
+    </a>
+
+    <a href="{% url 'table_restore_sql' %}" class="menu-button">
+        🔄 Восстановить таблицу из SQL
     </a>
 
     <a href="{% url 'table_restore_excel' %}" class="menu-button">

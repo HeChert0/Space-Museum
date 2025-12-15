@@ -142,25 +142,99 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
-    document.getElementById('title').addEventListener('input', function() {
-        validateTitleWithNumbers(this, 50);
-    });
+    document.addEventListener('DOMContentLoaded', function() {
+        // Валидация названия миссии
+        const titleInput = document.getElementById('title');
+        restrictMissionTitleInput(titleInput);
 
-    document.getElementById('goal').addEventListener('input', function() {
-        const value = this.value.trim();
-        if (value.length < 10) {
-            showFieldError(this, 'Минимум 10 символов');
-        } else if (value.length > 100) {
-            showFieldError(this, 'Максимум 100 символов');
-        } else {
-            clearFieldError(this);
-        }
-    });
+        // Валидация цели
+        const goalField = document.getElementById('goal');
+        goalField.addEventListener('input', function() {
+            const value = this.value.trim();
+            if (value.length < 10) {
+                showFieldError(this, 'Минимум 10 символов');
+            } else if (value.length > 100) {
+                showFieldError(this, 'Максимум 100 символов');
+            } else {
+                clearFieldError(this);
+            }
+        });
 
-    // Валидация экипажа
-    document.querySelectorAll('.crew-input').forEach(input => {
-        input.addEventListener('input', function() {
-            validateFIO(this);
+        // Валидация экипажа
+        const crewInputs = document.querySelectorAll('.crew-input');
+        crewInputs.forEach(input => {
+            restrictFIOInput(input);
+        });
+
+        // Валидация дат
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+
+        // Форматирование даты начала
+        startDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        startDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+            }
+        });
+
+        startDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Форматирование даты окончания
+        endDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        endDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+
+                // Проверка, что дата окончания не раньше даты начала
+                const startValue = startDateInput.value;
+                if (startValue && this.value) {
+                    const [sDay, sMonth, sYear] = startValue.split('.');
+                    const [eDay, eMonth, eYear] = this.value.split('.');
+
+                    const startDate = new Date(sYear, sMonth - 1, sDay);
+                    const endDate = new Date(eYear, eMonth - 1, eDay);
+
+                    if (endDate < startDate) {
+                        showFieldError(this, 'Дата окончания должна быть позже даты начала');
+                    }
+                }
+            }
+        });
+
+        endDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Проверка количества выбранных стран
+        document.querySelectorAll('input[name="countries[]"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const checked = document.querySelectorAll('input[name="countries[]"]:checked').length;
+                if (checked > 5) {
+                    this.checked = false;
+                    alert('Можно выбрать максимум 5 стран');
+                } else if (checked === 0) {
+                    document.querySelector('.countries-container').style.borderColor = '#ff0000';
+                } else {
+                    document.querySelector('.countries-container').style.borderColor = '#00ff00';
+                }
+            });
         });
     });
 
@@ -180,32 +254,13 @@
         `;
         container.appendChild(row);
 
-        // Добавляем валидацию для нового поля
-        row.querySelector('.crew-input').addEventListener('input', function() {
-            validateFIO(this);
-        });
+        // Применяем валидацию к новому полю
+        const newInput = row.querySelector('.crew-input');
+        restrictFIOInput(newInput);
     }
 
     function removeCrewMember(button) {
         button.parentElement.remove();
     }
-
-    // Валидация дат
-    document.getElementById('end_date').addEventListener('blur', function() {
-        if (this.value) {
-            const startDate = document.getElementById('start_date').value;
-            if (startDate && this.value) {
-                const [startDay, startMonth, startYear] = startDate.split('.');
-                const [endDay, endMonth, endYear] = this.value.split('.');
-
-                const start = new Date(startYear, startMonth - 1, startDay);
-                const end = new Date(endYear, endMonth - 1, endDay);
-
-                if (end < start) {
-                    showFieldError(this, 'Дата окончания должна быть позже даты начала');
-                }
-            }
-        }
-    });
 </script>
 {% endblock %}

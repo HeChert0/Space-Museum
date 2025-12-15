@@ -1,7 +1,7 @@
 <!-- core/templates/core/employee_form_add.html -->
 {% extends 'core/base.html' %}
 {% load static %}
-{% load custom_filters %}  <!-- Добавляем загрузку кастомных фильтров -->
+{% load custom_filters %}
 
 {% block content %}
 <a href="{% url 'entities_menu' %}" class="back-button">← Назад</a>
@@ -30,8 +30,8 @@
         <input type="text" name="full_name" id="full_name" required
                value="{{ fields_data.form_data.full_name|default:'' }}"
                {% if fields_data.error_field == 'full_name' %}class="error-field"{% endif %}
-               placeholder="Иванов Иван Иванович" maxlength="50">
-        <small>Минимум имя и фамилия, только буквы</small>
+               placeholder="Иванов Иван Иванович" maxlength="100">
+        <small>Минимум имя и фамилия, только буквы и дефис</small>
     </div>
 
     <div class="form-group">
@@ -54,7 +54,6 @@
                 {% if fields_data.error_field == 'position' %}class="error-field"{% endif %}>
             <option value="">-- Сначала выберите отдел --</option>
         </select>
-        <!-- Скрытое поле для сохранения выбранной должности при ошибке -->
         <input type="hidden" id="saved_position" value="{{ fields_data.form_data.position|default:'' }}">
         <input type="hidden" id="saved_department" value="{{ fields_data.form_data.department|default:'' }}">
     </div>
@@ -111,6 +110,68 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // *** ДИНАМИЧЕСКАЯ ВАЛИДАЦИЯ ФИО *** //
+    const fioInput = document.getElementById('full_name');
+    restrictFIOInput(fioInput); // Используем функцию из validation.js
+
+    // *** ВАЛИДАЦИЯ КВАЛИФИКАЦИИ С ДЕФИСОМ *** //
+    document.getElementById('qualification').addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+        const pattern = /[а-яА-ЯёЁa-zA-Z\-\s]/; // Добавлен дефис
+        if (!pattern.test(char)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    document.getElementById('qualification').addEventListener('paste', function(e) {
+        e.preventDefault();
+        const text = (e.clipboardData || window.clipboardData).getData('text');
+        const cleanedText = text.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, ''); // Добавлен дефис
+
+        const start = this.selectionStart;
+        const end = this.selectionEnd;
+        const value = this.value;
+
+        this.value = value.substring(0, start) + cleanedText + value.substring(end);
+        this.setSelectionRange(start + cleanedText.length, start + cleanedText.length);
+    });
+
+    document.getElementById('qualification').addEventListener('input', function() {
+        this.value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, ''); // Добавлен дефис
+
+        // Проверка на двойные дефисы
+        if (this.value.includes('--')) {
+            this.value = this.value.replace(/--+/g, '-');
+            showFieldError(this, 'Недопустимы двойные дефисы');
+        } else {
+            validateTextField(this, 2, 70, false);
+        }
+    });
+
+    // *** ВАЛИДАЦИЯ И ФОРМАТИРОВАНИЕ ДАТЫ НАЙМА *** //
+    const hireDateInput = document.getElementById('hire_date');
+
+    hireDateInput.addEventListener('input', function() {
+        formatDateInput(this);
+    });
+
+    hireDateInput.addEventListener('blur', function() {
+        if (this.value.length === 10) {
+            validateDate(this);
+        }
+    });
+
+    hireDateInput.addEventListener('keypress', function(e) {
+        const char = String.fromCharCode(e.which || e.keyCode);
+        // Разрешаем только цифры
+        if (!/\d/.test(char)) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    // Остальной код без изменений...
     const positionsByDepartment = {{ fields_data.positions_by_department|safe }};
 
     function updatePositions(departmentValue, selectedPosition) {
@@ -135,7 +196,6 @@
         }
     }
 
-    // При загрузке страницы восстанавливаем выбранную должность
     document.addEventListener('DOMContentLoaded', function() {
         const savedDepartment = document.getElementById('saved_department').value;
         const savedPosition = document.getElementById('saved_position').value;
@@ -145,12 +205,10 @@
         }
     });
 
-    // Обновление списка должностей при выборе отдела
     document.getElementById('department').addEventListener('change', function() {
         updatePositions(this.value, null);
     });
 
-    // Изменение подсказки для телефона
     document.getElementById('phone_code').addEventListener('change', function() {
         const hint = document.getElementById('phone_hint');
         const phoneInput = document.getElementById('phone_number');
@@ -163,7 +221,6 @@
         }
     });
 
-    // Валидация телефона - только цифры
     document.getElementById('phone_number').addEventListener('input', function() {
         this.value = this.value.replace(/\D/g, '');
         validatePhone(this, document.getElementById('phone_code').value);

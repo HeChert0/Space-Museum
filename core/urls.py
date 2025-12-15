@@ -65,5 +65,6 @@ urlpatterns = [
     # Добавьте эти URL
     path('table-columns-manage/', views.table_columns_manage, name='table_columns_manage'),
     path('table-restore-excel/', views.table_restore_excel, name='table_restore_excel'),
-
+    path('table-save-sql/', views.table_save_sql, name='table_save_sql'),
+    path('table-restore-sql/', views.table_restore_sql, name='table_restore_sql'),
 ]

@@ -121,6 +121,108 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Валидация названия миссии
+        const titleInput = document.getElementById('title');
+        restrictMissionTitleInput(titleInput);
+
+        // Валидация дат
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+
+        // Форматирование даты начала
+        startDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        startDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+            }
+        });
+
+        startDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Форматирование даты окончания
+        endDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        endDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+
+                // Проверка, что дата окончания не раньше даты начала
+                const startValue = startDateInput.value;
+                if (startValue && this.value) {
+                    const [sDay, sMonth, sYear] = startValue.split('.');
+                    const [eDay, eMonth, eYear] = this.value.split('.');
+
+                    const startDate = new Date(sYear, sMonth - 1, sDay);
+                    const endDate = new Date(eYear, eMonth - 1, eDay);
+
+                    if (endDate < startDate) {
+                        showFieldError(this, 'Дата окончания не может быть раньше даты начала');
+                    }
+                }
+            }
+        });
+
+        endDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Валидация цели
+        const goalField = document.getElementById('goal');
+        const counter = document.getElementById('goalCharsLeft');
+
+        counter.textContent = 100 - goalField.value.length;
+
+        goalField.addEventListener('input', function() {
+            counter.textContent = 100 - this.value.length;
+
+            const value = this.value.trim();
+            if (value.length < 10 && value.length > 0) {
+                showFieldError(this, 'Минимум 10 символов');
+            } else if (value.length > 100) {
+                showFieldError(this, 'Максимум 100 символов');
+            } else {
+                clearFieldError(this);
+            }
+        });
+
+        // Валидация членов экипажа
+        const crewInputs = document.querySelectorAll('input[name="crew[]"]');
+        crewInputs.forEach(input => {
+            restrictFIOInput(input);
+        });
+
+        // Проверка количества выбранных стран
+        document.querySelectorAll('input[name="countries[]"]').forEach(checkbox => {
+            checkbox.addEventListener('change', function() {
+                const checked = document.querySelectorAll('input[name="countries[]"]:checked').length;
+                if (checked > 5) {
+                    this.checked = false;
+                    alert('Можно выбрать максимум 5 стран');
+                } else if (checked === 0) {
+                    document.querySelector('.checkbox-group').style.borderColor = '#ff0000';
+                } else {
+                    document.querySelector('.checkbox-group').style.borderColor = 'transparent';
+                }
+            });
+        });
+    });
+
     function addCrewMember() {
         const container = document.getElementById('crew-container');
         if (container.children.length >= 20) {
@@ -133,35 +235,14 @@
         row.innerHTML = '<input type="text" name="crew[]" placeholder="ФИО члена экипажа">' +
                        '<button type="button" onclick="removeCrewMember(this)" class="btn-remove-crew">❌</button>';
         container.appendChild(row);
+
+        // Применяем валидацию к новому полю
+        const newInput = row.querySelector('input[name="crew[]"]');
+        restrictFIOInput(newInput);
     }
 
     function removeCrewMember(button) {
         button.parentElement.remove();
     }
-
-    // Счетчик символов для цели - исправленный
-    document.addEventListener('DOMContentLoaded', function() {
-        const goalField = document.getElementById('goal');
-        const counter = document.getElementById('goalCharsLeft');
-
-        // Инициализация счетчика
-        counter.textContent = 100 - goalField.value.length;
-
-        // Обновление при вводе
-        goalField.addEventListener('input', function() {
-            counter.textContent = 100 - this.value.length;
-        });
-    });
-
-    // Проверка количества выбранных стран
-    document.querySelectorAll('input[name="countries[]"]').forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            const checked = document.querySelectorAll('input[name="countries[]"]:checked').length;
-            if (checked > 5) {
-                this.checked = false;
-                alert('Можно выбрать максимум 5 стран');
-            }
-        });
-    });
 </script>
 {% endblock %}

@@ -1,0 +1,120 @@
+<!-- core/templates/core/table_restore_sql.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'table_management' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">🔄 Восстановление таблицы из SQL</h1>
+
+<div class="restore-container">
+    <form method="post" enctype="multipart/form-data" class="entity-form">
+        {% csrf_token %}
+
+        <div class="info-box">
+            <h3>ℹ️ Информация:</h3>
+            <ul>
+                <li>Файл должен содержать SQL команды для создания таблицы</li>
+                <li>Будет восстановлена структура таблицы и данные</li>
+                <li>Все связанные таблицы должны существовать</li>
+                <li>Если таблица уже существует, операция будет отменена</li>
+            </ul>
+        </div>
+
+        <div class="warning-box">
+            <h3>⚠️ Внимание:</h3>
+            <ul>
+                <li>Если связанные таблицы отсутствуют, восстановление завершится ошибкой</li>
+                <li>Убедитесь, что все зависимости существуют перед восстановлением</li>
+            </ul>
+        </div>
+
+        <div class="form-group">
+            <label for="sql_file">Выберите SQL файл:</label>
+            <input type="file" name="sql_file" accept=".sql" required>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="force_restore" value="1">
+                Принудительное восстановление (удалить существующую таблицу)
+            </label>
+        </div>
+
+        <button type="submit" class="btn-submit">🔄 Восстановить из SQL</button>
+    </form>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="message-box {{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<style>
+    .restore-container {
+        max-width: 600px;
+        margin: 30px auto;
+    }
+
+    .info-box, .warning-box {
+        background-color: #001100;
+        border: 1px solid #00ff00;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+
+    .warning-box {
+        border-color: #ffff00;
+    }
+
+    .warning-box h3 {
+        color: #ffff00;
+        margin-bottom: 10px;
+    }
+
+    .info-box h3 {
+        color: #00ff00;
+        margin-bottom: 10px;
+    }
+
+    .info-box ul, .warning-box ul {
+        list-style: none;
+        padding-left: 20px;
+        color: #00ff00;
+    }
+
+    .warning-box ul {
+        color: #ffff00;
+    }
+
+    .info-box li:before {
+        content: "• ";
+        color: #00ff00;
+    }
+
+    .warning-box li:before {
+        content: "⚠ ";
+        color: #ffff00;
+    }
+
+    .message-box {
+        margin-top: 20px;
+        padding: 15px;
+        border: 1px solid #00ff00;
+        border-radius: 5px;
+    }
+
+    .message-box.error {
+        border-color: #ff0000;
+        color: #ff0000;
+    }
+
+    .message-box.success {
+        border-color: #00ff00;
+        color: #00ff00;
+    }
+</style>
+{% endblock %}

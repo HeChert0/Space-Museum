@@ -99,20 +99,42 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
-    document.getElementById('title').addEventListener('input', function() {
-        validateTextField(this, 2, 50, false);
-    });
+    document.addEventListener('DOMContentLoaded', function() {
+        // Валидация названия - как у выставок
+        const titleInput = document.getElementById('title');
+        restrictExhibitionTitleInput(titleInput);
 
-    document.getElementById('ticket_num').addEventListener('input', function() {
-        validateNumberField(this, 10, 100);
-    });
+        // Валидация даты
+        const dateInput = document.getElementById('date');
+        dateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
 
-    document.getElementById('price').addEventListener('input', function() {
-        validatePrice(this, 20, 300);
-    });
+        dateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+            }
+        });
 
-    document.getElementById('duration').addEventListener('input', function() {
-        validateNumberField(this, 30, 180);
+        dateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Валидация количества билетов - только цифры
+        const ticketNumInput = document.getElementById('ticket_num');
+        restrictNumberInput(ticketNumInput, 10, 100);
+
+        // Валидация цены - цифры и точка
+        const priceInput = document.getElementById('price');
+        restrictPriceInput(priceInput, 20, 300);
+
+        // Валидация продолжительности - только цифры
+        const durationInput = document.getElementById('duration');
+        restrictNumberInput(durationInput, 30, 180);
     });
 </script>
 {% endblock %}

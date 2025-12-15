@@ -1,0 +1,99 @@
+<!-- core/templates/core/table_save_sql.html -->
+{% extends 'core/base.html' %}
+
+{% block content %}
+<a href="{% url 'table_management' %}" class="back-button">← Назад</a>
+
+<h1 class="menu-title">💾 Сохранение таблицы в SQL</h1>
+
+<div class="save-container">
+    <div class="info-box">
+        <h3>ℹ️ Информация:</h3>
+        <ul>
+            <li>Будет сохранена структура таблицы и все данные</li>
+            <li>Сохраняются все связи с другими таблицами</li>
+            <li>Файл можно использовать для восстановления таблицы</li>
+            <li>Автосгенерированные таблицы Django не отображаются</li>
+        </ul>
+    </div>
+
+    <form method="post" class="entity-form">
+        {% csrf_token %}
+
+        <div class="form-group">
+            <label for="table_name">Выберите таблицу для сохранения:</label>
+            <select name="table_name" id="table_name" required>
+                <option value="">-- Выберите таблицу --</option>
+                {% for table in user_tables %}
+                    <option value="{{ table }}">{{ table }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="include_data" value="1" checked>
+                Включить данные (снимите галочку для сохранения только структуры)
+            </label>
+        </div>
+
+        <button type="submit" class="btn-submit">💾 Сохранить в SQL</button>
+    </form>
+</div>
+
+{% if messages %}
+    {% for message in messages %}
+        <div class="message-box {{ message.tags }}">
+            {{ message }}
+        </div>
+    {% endfor %}
+{% endif %}
+
+<style>
+    .save-container {
+        max-width: 600px;
+        margin: 30px auto;
+    }
+
+    .info-box {
+        background-color: #001100;
+        border: 1px solid #00ff00;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 20px;
+    }
+
+    .info-box h3 {
+        color: #00ff00;
+        margin-bottom: 10px;
+    }
+
+    .info-box ul {
+        list-style: none;
+        padding-left: 20px;
+        color: #00ff00;
+    }
+
+    .info-box li:before {
+        content: "• ";
+        color: #00ff00;
+    }
+
+    .message-box {
+        margin-top: 20px;
+        padding: 15px;
+        border: 1px solid #00ff00;
+        border-radius: 5px;
+    }
+
+    .message-box.error {
+        border-color: #ff0000;
+        color: #ff0000;
+    }
+
+    .message-box.success {
+        border-color: #00ff00;
+        color: #00ff00;
+    }
+</style>
+{% endblock %}

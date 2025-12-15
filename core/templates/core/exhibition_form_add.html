@@ -95,4 +95,71 @@
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Валидация названия
+        const titleInput = document.getElementById('title');
+        restrictExhibitionTitleInput(titleInput);
+
+        // Валидация темы
+        const themeInput = document.getElementById('theme');
+        restrictExhibitionTitleInput(themeInput);
+
+        // Валидация дат
+        const startDateInput = document.getElementById('start_date');
+        const endDateInput = document.getElementById('end_date');
+
+        // Форматирование и валидация даты начала
+        startDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        startDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+            }
+        });
+
+        startDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+
+        // Форматирование и валидация даты окончания
+        endDateInput.addEventListener('input', function() {
+            formatDateInput(this);
+        });
+
+        endDateInput.addEventListener('blur', function() {
+            if (this.value.length === 10) {
+                validateDate(this);
+
+                // Проверка, что дата окончания не раньше даты начала
+                const startValue = startDateInput.value;
+                if (startValue && this.value) {
+                    const [sDay, sMonth, sYear] = startValue.split('.');
+                    const [eDay, eMonth, eYear] = this.value.split('.');
+
+                    const startDate = new Date(sYear, sMonth - 1, sDay);
+                    const endDate = new Date(eYear, eMonth - 1, eDay);
+
+                    if (endDate < startDate) {
+                        showFieldError(this, 'Дата окончания не может быть раньше даты начала');
+                    }
+                }
+            }
+        });
+
+        endDateInput.addEventListener('keypress', function(e) {
+            const char = String.fromCharCode(e.which || e.keyCode);
+            if (!/\d/.test(char)) {
+                e.preventDefault();
+                return false;
+            }
+        });
+    });
+</script>
 {% endblock %}
