@@ -1595,7 +1595,7 @@ def mission_add(request):
                 error = FieldValidationError('Название не может быть длиннее 50 символов')
                 error.field = 'title'
                 raise error
-            if not re.match(r'^[а-яА-ЯёЁa-zA-Z0-9\s\(\)\-]+$', title):
+            if not re.match(r'^[а-яА-ЯёЁa-zA-Z0-9\s\(\)\"\'\-\"]+$', title):
                 error = FieldValidationError('Название содержит недопустимые символы')
                 error.field = 'title'
                 raise error

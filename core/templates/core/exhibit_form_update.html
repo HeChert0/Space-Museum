@@ -1,4 +1,3 @@
-<!-- core/templates/core/exhibit_form_update.html -->
 {% extends 'core/base.html' %}
 {% load static %}
 
@@ -35,16 +34,20 @@
     <div class="form-group">
         <label for="description">Описание: <span class="required">*</span></label>
         <textarea name="description" id="description" required
-                  placeholder="Описание экспоната" maxlength="100">{{ fields_data.exhibit.description }}</textarea>
-        <small>Буквы, цифры, пунктуация, 5-100 символов</small>
+                  placeholder="Описание экспоната" maxlength="500">{{ fields_data.exhibit.description }}</textarea>
+        <small>Буквы, цифры, пунктуация, 5-500 символов</small>
+        <div class="field-error" id="description_error"></div>
     </div>
 
     <div class="form-group">
         <label for="creation_date">Дата создания: <span class="required">*</span></label>
-        <input type="text" name="creation_date" id="creation_date" required
-               value="{{ fields_data.exhibit.creation_date|date:'d.m.Y' }}"
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
-        <small>Дата не может быть в будущем</small>
+        <input type="date" name="creation_date" id="creation_date" required
+               value="{{ fields_data.exhibit.creation_date|date:'Y-m-d' }}"
+               min="1950-01-01" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="creation_date_error"></div>
+        <small>Экспонаты космической эры (с 1950 года)</small>
     </div>
 
     <div class="form-group">
@@ -102,19 +105,112 @@
 
 <style>
     .required { color: #ff0000; }
-    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+    small {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #00ff00;
+        opacity: 0.8;
+    }
+
+    .date-calendar {
+        cursor: pointer;
+        background: #1a1a1a;
+        color: #00ff00;
+        border: 1px solid #00ff00;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        width: 100%;
+        position: relative;
+    }
+
+    .date-calendar::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+        position: absolute;
+        right: 10px;
+        width: 20px;
+        height: 20px;
+    }
+
+    .date-calendar:hover {
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+
+    .date-calendar[readonly] {
+        cursor: pointer;
+        background: #1a1a1a;
+    }
+
+    .date-calendar {
+        caret-color: transparent;
+    }
+
+    .field-error {
+        color: #ff0000;
+        font-size: 12px;
+        margin-top: 5px;
+        display: none;
+    }
+
+    .field-error.show {
+        display: block;
+    }
+
+    input.error, textarea.error {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+    }
+
+    input.valid, textarea.valid {
+        border-color: #00ff00 !important;
+    }
+
+    textarea {
+        width: 100%;
+        min-height: 100px;
+        background: #1a1a1a;
+        color: #00ff00;
+        border: 1px solid #00ff00;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        resize: vertical;
+    }
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // Функции для показа/скрытия ошибок
+    function showFieldError(input, message) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        input.classList.add('error');
+        input.classList.remove('valid');
+    }
+
+    function clearFieldError(input) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        }
+        input.classList.remove('error');
+        input.classList.add('valid');
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Устанавливаем максимальную дату (сегодня)
+        const today = new Date().toISOString().split('T')[0];
+
         // Валидация названия - как у выставок
         const titleInput = document.getElementById('title');
         restrictExhibitionTitleInput(titleInput);
 
         // Валидация описания с увеличенным лимитом
         const descriptionInput = document.getElementById('description');
-        descriptionInput.maxLength = 500; // Устанавливаем максимальную длину
 
         descriptionInput.addEventListener('input', function() {
             const value = this.value.trim();
@@ -122,40 +218,74 @@
                 showFieldError(this, 'Минимум 5 символов');
             } else if (value.length > 500) {
                 showFieldError(this, 'Максимум 500 символов');
+                this.value = this.value.substring(0, 500);
             } else {
                 clearFieldError(this);
             }
         });
 
-        // Валидация и форматирование даты
+        // Настройка календаря для даты создания
         const creationDateInput = document.getElementById('creation_date');
 
-        creationDateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
+        if (creationDateInput) {
+            creationDateInput.max = today;
 
-        creationDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+            // Блокируем ввод с клавиатуры
+            creationDateInput.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') {
+                    e.preventDefault();
+                }
+            });
+
+            // Блокируем вставку
+            creationDateInput.addEventListener('paste', function(e) {
                 e.preventDefault();
-                return false;
-            }
-        });
+            });
 
-        creationDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                if (validateDate(this)) {
-                    const [day, month, year] = this.value.split('.');
-                    const inputDate = new Date(year, month - 1, day);
-                    const today = new Date();
-                    today.setHours(0, 0, 0, 0);
+            // Валидация при изменении даты через календарь
+            creationDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    showFieldError(this, 'Выберите дату создания экспоната');
+                    return;
+                }
 
-                    if (inputDate > today) {
-                        showFieldError(this, 'Дата не может быть в будущем');
+                const selectedDate = new Date(this.value);
+                const minDate = new Date('1950-01-01');
+                const maxDate = new Date();
+
+                if (selectedDate < minDate) {
+                    showFieldError(this, 'Космическая эра началась с 1950 года');
+                    this.value = '';
+                } else if (selectedDate > maxDate) {
+                    showFieldError(this, 'Дата не может быть в будущем');
+                    this.value = '';
+                } else {
+                    clearFieldError(this);
+
+                    // Показываем эпоху экспоната
+                    const year = selectedDate.getFullYear();
+                    let era = '';
+                    if (year >= 1950 && year < 1960) {
+                        era = 'Начало космической эры';
+                    } else if (year >= 1960 && year < 1970) {
+                        era = 'Золотой век космонавтики';
+                    } else if (year >= 1970 && year < 1990) {
+                        era = 'Эра космических станций';
+                    } else if (year >= 1990 && year < 2000) {
+                        era = 'Международное сотрудничество';
+                    } else if (year >= 2000) {
+                        era = 'Современная космонавтика';
+                    }
+
+                    if (era) {
+                        const small = this.parentElement.querySelector('small');
+                        if (small) {
+                            small.textContent = era;
+                        }
                     }
                 }
-            }
-        });
+            });
+        }
     });
 </script>
 {% endblock %}

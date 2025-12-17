@@ -1,4 +1,3 @@
-<!-- core/templates/core/exhibition_form_update.html -->
 {% extends 'core/base.html' %}
 {% load static %}
 
@@ -42,16 +41,23 @@
 
     <div class="form-group">
         <label for="start_date">Дата начала: <span class="required">*</span></label>
-        <input type="text" name="start_date" id="start_date" required
-               value="{{ fields_data.exhibition.start_date|date:'d.m.Y' }}"
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="start_date" id="start_date" required
+               value="{{ fields_data.exhibition.start_date|date:'Y-m-d' }}"
+               min="2002-01-01" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="start_date_error"></div>
     </div>
 
     <div class="form-group">
         <label for="end_date">Дата окончания: <span class="required">*</span></label>
-        <input type="text" name="end_date" id="end_date" required
-               value="{{ fields_data.exhibition.end_date|date:'d.m.Y' }}"
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="end_date" id="end_date" required
+               value="{{ fields_data.exhibition.end_date|date:'Y-m-d' }}"
+               min="2002-01-04" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="end_date_error"></div>
+        <small id="duration_hint">Продолжительность: <span id="duration_days"></span> дн.</small>
     </div>
 
     <div class="form-group">
@@ -87,12 +93,107 @@
         border-color: #ff0000 !important;
         box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
     }
-    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+    small {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #00ff00;
+        opacity: 0.8;
+    }
+
+    .date-calendar {
+        cursor: pointer;
+        background: #1a1a1a;
+        color: #00ff00;
+        border: 1px solid #00ff00;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        width: 100%;
+        position: relative;
+    }
+
+    .date-calendar::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+        position: absolute;
+        right: 10px;
+        width: 20px;
+        height: 20px;
+    }
+
+    .date-calendar:hover {
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+
+    .date-calendar[readonly] {
+        cursor: pointer;
+        background: #1a1a1a;
+    }
+
+    .date-calendar {
+        caret-color: transparent;
+    }
+
+    .field-error {
+        color: #ff0000;
+        font-size: 12px;
+        margin-top: 5px;
+        display: none;
+    }
+
+    .field-error.show {
+        display: block;
+    }
+
+    input.error {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+    }
+
+    input.valid {
+        border-color: #00ff00 !important;
+    }
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // Функции для показа/скрытия ошибок
+    function showFieldError(input, message) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        input.classList.add('error');
+        input.classList.remove('valid');
+    }
+
+    function clearFieldError(input) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        }
+        input.classList.remove('error');
+        input.classList.add('valid');
+    }
+
+    // Функция для расчета разницы в днях
+    function calculateDaysDifference(startDate, endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 включительно
+        return diffDays;
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Устанавливаем максимальную дату
+        const today = new Date();
+        const maxDate = new Date();
+        maxDate.setFullYear(maxDate.getFullYear() + 2); // Максимум на 2 года вперед
+        const maxDateStr = maxDate.toISOString().split('T')[0];
+
         // Валидация названия
         const titleInput = document.getElementById('title');
         restrictExhibitionTitleInput(titleInput);
@@ -101,61 +202,121 @@
         const themeInput = document.getElementById('theme');
         restrictExhibitionTitleInput(themeInput);
 
-        // Валидация дат
+        // Настройка календарей
         const startDateInput = document.getElementById('start_date');
         const endDateInput = document.getElementById('end_date');
+        const durationHint = document.getElementById('duration_hint');
+        const durationDays = document.getElementById('duration_days');
 
-        // Форматирование и валидация даты начала
-        startDateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
+        // Рассчитываем начальную продолжительность
+        if (startDateInput.value && endDateInput.value) {
+            const days = calculateDaysDifference(startDateInput.value, endDateInput.value);
+            durationDays.textContent = days;
+        }
 
-        startDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
-            }
-        });
+        if (startDateInput) {
+            startDateInput.max = maxDateStr;
 
-        startDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+            // Блокируем ввод с клавиатуры
+            startDateInput.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') {
+                    e.preventDefault();
+                }
+            });
+
+            startDateInput.addEventListener('paste', function(e) {
                 e.preventDefault();
-                return false;
-            }
-        });
+            });
 
-        // Форматирование и валидация даты окончания
-        endDateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
+            // При изменении даты начала
+            startDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    showFieldError(this, 'Выберите дату начала');
+                    return;
+                }
 
-        endDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
+                const selectedDate = new Date(this.value);
+                const minDate = new Date('2002-01-01');
 
-                // Проверка, что дата окончания не раньше даты начала
-                const startValue = startDateInput.value;
-                if (startValue && this.value) {
-                    const [sDay, sMonth, sYear] = startValue.split('.');
-                    const [eDay, eMonth, eYear] = this.value.split('.');
+                if (selectedDate < minDate) {
+                    showFieldError(this, 'Музей открыт с 2002 года');
+                    this.value = '';
+                    return;
+                }
 
-                    const startDate = new Date(sYear, sMonth - 1, sDay);
-                    const endDate = new Date(eYear, eMonth - 1, eDay);
+                clearFieldError(this);
 
-                    if (endDate < startDate) {
-                        showFieldError(this, 'Дата окончания не может быть раньше даты начала');
+                // Устанавливаем минимальную дату окончания
+                const minEndDate = new Date(this.value);
+                minEndDate.setDate(minEndDate.getDate() + 2);
+                endDateInput.min = minEndDate.toISOString().split('T')[0];
+
+                // Проверяем текущую дату окончания
+                if (endDateInput.value) {
+                    const endDate = new Date(endDateInput.value);
+                    if (endDate < minEndDate) {
+                        endDateInput.value = '';
+                        showFieldError(endDateInput, 'Выставка должна длиться минимум 3 дня');
+                    } else {
+                        // Пересчитываем продолжительность
+                        const days = calculateDaysDifference(this.value, endDateInput.value);
+                        durationDays.textContent = days;
                     }
                 }
-            }
-        });
+            });
+        }
 
-        endDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+        if (endDateInput) {
+            endDateInput.max = maxDateStr;
+
+            // Блокируем ввод с клавиатуры
+            endDateInput.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') {
+                    e.preventDefault();
+                }
+            });
+
+            endDateInput.addEventListener('paste', function(e) {
                 e.preventDefault();
-                return false;
-            }
-        });
+            });
+
+            // При изменении даты окончания
+            endDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    showFieldError(this, 'Выберите дату окончания');
+                    return;
+                }
+
+                if (!startDateInput.value) {
+                    showFieldError(this, 'Сначала выберите дату начала');
+                    this.value = '';
+                    return;
+                }
+
+                const startDate = new Date(startDateInput.value);
+                const endDate = new Date(this.value);
+
+                // Проверяем минимальную продолжительность
+                const days = calculateDaysDifference(startDateInput.value, this.value);
+
+                if (days < 3) {
+                    showFieldError(this, 'Выставка должна длиться минимум 3 дня');
+                    this.value = '';
+                    return;
+                }
+
+                if (endDate < startDate) {
+                    showFieldError(this, 'Дата окончания не может быть раньше даты начала');
+                    this.value = '';
+                    return;
+                }
+
+                clearFieldError(this);
+
+                // Показываем продолжительность
+                durationDays.textContent = days;
+            });
+        }
     });
 </script>
 {% endblock %}

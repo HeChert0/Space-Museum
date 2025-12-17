@@ -1,4 +1,3 @@
-<!-- core/templates/core/excursion_form_update.html -->
 {% extends 'core/base.html' %}
 {% load static %}
 
@@ -34,9 +33,12 @@
 
     <div class="form-group">
         <label for="date">Дата проведения: <span class="required">*</span></label>
-        <input type="text" name="date" id="date" required
-               value="{{ fields_data.excursion.date|date:'d.m.Y' }}"
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="date" id="date" required
+               value="{{ fields_data.excursion.date|date:'Y-m-d' }}"
+               min="2002-01-01" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="date_error"></div>
     </div>
 
     <div class="form-group">
@@ -94,35 +96,143 @@
 
 <style>
     .required { color: #ff0000; }
-    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+    small {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #00ff00;
+        opacity: 0.8;
+    }
+
+    .date-calendar {
+        cursor: pointer;
+        background: #1a1a1a;
+        color: #00ff00;
+        border: 1px solid #00ff00;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        width: 100%;
+        position: relative;
+    }
+
+    .date-calendar::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+        position: absolute;
+        right: 10px;
+        width: 20px;
+        height: 20px;
+    }
+
+    .date-calendar:hover {
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+
+    .date-calendar[readonly] {
+        cursor: pointer;
+        background: #1a1a1a;
+    }
+
+    .date-calendar {
+        caret-color: transparent;
+    }
+
+    .field-error {
+        color: #ff0000;
+        font-size: 12px;
+        margin-top: 5px;
+        display: none;
+    }
+
+    .field-error.show {
+        display: block;
+    }
+
+    input.error {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+    }
+
+    input.valid {
+        border-color: #00ff00 !important;
+    }
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // Функции для показа/скрытия ошибок
+    function showFieldError(input, message) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        input.classList.add('error');
+        input.classList.remove('valid');
+    }
+
+    function clearFieldError(input) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        }
+        input.classList.remove('error');
+        input.classList.add('valid');
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Устанавливаем максимальную дату
+        const today = new Date();
+        const maxDate = new Date();
+        maxDate.setMonth(maxDate.getMonth() + 6); // Можно планировать экскурсии на 6 месяцев вперед
+        const maxDateStr = maxDate.toISOString().split('T')[0];
+
         // Валидация названия - как у выставок
         const titleInput = document.getElementById('title');
         restrictExhibitionTitleInput(titleInput);
 
-        // Валидация даты
+        // Настройка календаря для даты проведения
         const dateInput = document.getElementById('date');
-        dateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
 
-        dateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
-            }
-        });
+        if (dateInput) {
+            dateInput.max = maxDateStr;
 
-        dateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+            // Блокируем ввод с клавиатуры
+            dateInput.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') {
+                    e.preventDefault();
+                }
+            });
+
+            // Блокируем вставку
+            dateInput.addEventListener('paste', function(e) {
                 e.preventDefault();
-                return false;
-            }
-        });
+            });
+
+            // Валидация при изменении даты через календарь
+            dateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    showFieldError(this, 'Выберите дату проведения');
+                    return;
+                }
+
+                const selectedDate = new Date(this.value);
+                const minDate = new Date('2002-01-01');
+                const todayDate = new Date();
+                todayDate.setHours(0, 0, 0, 0);
+
+                if (selectedDate < minDate) {
+                    showFieldError(this, 'Музей открыт с 2002 года');
+                    this.value = '';
+                } else if (selectedDate > maxDate) {
+                    showFieldError(this, 'Экскурсии можно планировать максимум на 6 месяцев вперед');
+                    this.value = '';
+                } else {
+                    clearFieldError(this);
+                }
+            });
+        }
 
         // Валидация количества билетов - только цифры
         const ticketNumInput = document.getElementById('ticket_num');

@@ -34,9 +34,12 @@
 
     <div class="form-group">
         <label for="birth_date">Дата рождения: <span class="required">*</span></label>
-        <input type="text" name="birth_date" id="birth_date" required
-               value="{{ fields_data.visitor.birth_date|date:'d.m.Y' }}"
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="birth_date" id="birth_date" required
+               value="{{ fields_data.visitor.birth_date|date:'Y-m-d' }}"
+               min="1925-01-01" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="birth_date_error"></div>
     </div>
 
     <div class="form-group">
@@ -65,9 +68,12 @@
 
     <div class="form-group">
         <label for="visit_date">Дата посещения: <span class="required">*</span></label>
-        <input type="text" name="visit_date" id="visit_date" required
-               value="{{ fields_data.visitor.visit_date|date:'d.m.Y' }}"
-               class="date-input" placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="visit_date" id="visit_date" required
+               value="{{ fields_data.visitor.visit_date|date:'Y-m-d' }}"
+               min="2002-01-01" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="visit_date_error"></div>
     </div>
 
     <div class="form-group">
@@ -88,65 +94,244 @@
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-        // Валидация ФИО
-        const fioInput = document.getElementById('full_name');
-        restrictFIOInput(fioInput);
+    // Устанавливаем максимальную дату (сегодня) для календарей
+    const today = new Date().toISOString().split('T')[0];
 
-        // Валидация дат
+    // Функция для расчета возраста на определенную дату
+    function calculateAge(birthDate, onDate) {
+        const birth = new Date(birthDate);
+        const checkDate = new Date(onDate);
+        let age = checkDate.getFullYear() - birth.getFullYear();
+        const monthDiff = checkDate.getMonth() - birth.getMonth();
+
+        if (monthDiff < 0 || (monthDiff === 0 && checkDate.getDate() < birth.getDate())) {
+            age--;
+        }
+
+        return age;
+    }
+
+    // Функция для обновления доступных типов билетов
+    function updateTicketTypes() {
         const birthDateInput = document.getElementById('birth_date');
         const visitDateInput = document.getElementById('visit_date');
+        const ticketTypeSelect = document.getElementById('ticket_type');
 
-        // Форматирование и валидация даты рождения
-        birthDateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
+        if (!birthDateInput.value || !visitDateInput.value || !ticketTypeSelect) {
+            return;
+        }
 
-        birthDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
+        const age = calculateAge(birthDateInput.value, visitDateInput.value);
+        const currentValue = ticketTypeSelect.value;
+
+        // Очищаем список
+        ticketTypeSelect.innerHTML = '<option value="">-- Выберите тип --</option>';
+
+        // Добавляем доступные типы билетов на основе возраста
+        if (age < 16) {
+            // Только детский билет для детей до 16
+            ticketTypeSelect.innerHTML += '<option value="Детский">Детский (до 16 лет)</option>';
+        } else {
+            // Взрослый билет доступен всем от 16 лет
+            ticketTypeSelect.innerHTML += '<option value="Взрослый">Взрослый</option>';
+
+            // Студенческий билет для возраста 16-30
+            if (age >= 16 && age <= 30) {
+                ticketTypeSelect.innerHTML += '<option value="Студенческий">Студенческий (16-30 лет)</option>';
             }
-        });
 
-        birthDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+            // Пенсионный билет для 55+
+            if (age >= 55) {
+                ticketTypeSelect.innerHTML += '<option value="Пенсионный">Пенсионный (55+ лет)</option>';
+            }
+        }
+
+        // Восстанавливаем предыдущее значение, если оно все еще доступно
+        const options = Array.from(ticketTypeSelect.options).map(opt => opt.value);
+        if (options.includes(currentValue)) {
+            ticketTypeSelect.value = currentValue;
+        } else {
+            ticketTypeSelect.value = '';
+        }
+
+        // Показываем подсказку
+        if (ticketTypeSelect.options.length === 2) { // Один пустой + один тип
+            ticketTypeSelect.options[1].selected = true; // Автовыбор единственного доступного
+            clearFieldError(ticketTypeSelect);
+        }
+    }
+
+    // Применение валидации для ФИО
+    const fioInput = document.getElementById('full_name');
+    if (fioInput) {
+        restrictFIOInput(fioInput);
+        fioInput.addEventListener('input', function() {
+            validateFIO(this);
+        });
+        fioInput.addEventListener('blur', function() {
+            validateFIO(this);
+        });
+    }
+
+    // Настройка календарей для дат
+    const birthDateInput = document.getElementById('birth_date');
+    const visitDateInput = document.getElementById('visit_date');
+    const ticketTypeSelect = document.getElementById('ticket_type');
+
+    if (birthDateInput) {
+        birthDateInput.max = today;
+
+        // Блокируем ввод с клавиатуры
+        birthDateInput.addEventListener('keydown', function(e) {
+            if (e.key !== 'Tab') {
                 e.preventDefault();
-                return false;
             }
         });
 
-        // Форматирование и валидация даты посещения
-        visitDateInput.addEventListener('input', function() {
-            formatDateInput(this);
+        birthDateInput.addEventListener('paste', function(e) {
+            e.preventDefault();
         });
 
-        visitDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
+        // Валидация при изменении даты рождения
+        birthDateInput.addEventListener('change', function() {
+            if (!this.value) {
+                showFieldError(this, 'Выберите дату рождения');
+                return;
+            }
+
+            const selectedDate = new Date(this.value);
+            const minDate = new Date('1925-01-01');
+            const maxDate = new Date();
+
+            // Проверка минимального возраста (6 лет)
+            const age = calculateAge(this.value, today);
+            if (age < 6) {
+                showFieldError(this, 'Посетитель должен быть старше 6 лет');
+                this.value = '';
+                return;
+            }
+
+            if (selectedDate < minDate) {
+                showFieldError(this, 'Дата не может быть раньше 1925 года');
+                this.value = '';
+            } else if (selectedDate > maxDate) {
+                showFieldError(this, 'Дата не может быть в будущем');
+                this.value = '';
+            } else {
+                clearFieldError(this);
+
+                // Обновляем минимальную дату посещения
+                if (visitDateInput) {
+                    // Дата посещения не может быть раньше даты рождения
+                    visitDateInput.min = this.value;
+
+                    // Если дата посещения уже выбрана и она раньше даты рождения
+                    if (visitDateInput.value && new Date(visitDateInput.value) < new Date(this.value)) {
+                        visitDateInput.value = '';
+                        showFieldError(visitDateInput, 'Дата посещения не может быть раньше даты рождения');
+                    }
+
+                    // Обновляем типы билетов
+                    updateTicketTypes();
+                }
+            }
+        });
+    }
+
+    if (visitDateInput) {
+        visitDateInput.max = today;
+        visitDateInput.min = '2002-01-01'; // Начальное значение
+
+        // Блокируем выбор даты посещения до выбора даты рождения
+        visitDateInput.addEventListener('focus', function() {
+            if (!birthDateInput.value) {
+                this.blur();
+                showFieldError(birthDateInput, 'Сначала выберите дату рождения');
+                showFieldError(this, 'Выберите дату рождения');
             }
         });
 
-        visitDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+        visitDateInput.addEventListener('keydown', function(e) {
+            if (e.key !== 'Tab') {
                 e.preventDefault();
-                return false;
             }
         });
 
-        // Валидация отзыва
-        const reviewInput = document.getElementById('review');
-        const reviewCounter = document.getElementById('reviewCharsLeft');
+        visitDateInput.addEventListener('paste', function(e) {
+            e.preventDefault();
+        });
 
-        // Инициализация счетчика
-        const currentLength = reviewInput.value.length;
-        reviewCounter.textContent = 100 - currentLength;
+        // Валидация при изменении даты посещения
+        visitDateInput.addEventListener('change', function() {
+            if (!this.value) {
+                showFieldError(this, 'Выберите дату посещения');
+                return;
+            }
 
+            if (!birthDateInput.value) {
+                showFieldError(this, 'Сначала выберите дату рождения');
+                this.value = '';
+                return;
+            }
+
+            const selectedDate = new Date(this.value);
+            const birthDate = new Date(birthDateInput.value);
+            const minDate = new Date('2002-01-01');
+            const maxDate = new Date();
+
+            // Проверка, что дата посещения не раньше даты рождения
+            if (selectedDate < birthDate) {
+                showFieldError(this, 'Дата посещения не может быть раньше даты рождения');
+                this.value = '';
+                return;
+            }
+
+            // Проверка возраста на момент посещения
+            const ageAtVisit = calculateAge(birthDateInput.value, this.value);
+            if (ageAtVisit < 6) {
+                showFieldError(this, 'На момент посещения посетителю должно быть минимум 6 лет');
+                this.value = '';
+                return;
+            }
+
+            if (selectedDate < minDate) {
+                showFieldError(this, 'Музей открыт с 2002 года');
+                this.value = '';
+            } else if (selectedDate > maxDate) {
+                showFieldError(this, 'Дата не может быть в будущем');
+                this.value = '';
+            } else {
+                clearFieldError(this);
+                // Обновляем типы билетов
+                updateTicketTypes();
+            }
+        });
+    }
+
+    // Блокируем выбор типа билета до выбора дат
+    if (ticketTypeSelect) {
+        ticketTypeSelect.addEventListener('focus', function() {
+            if (!birthDateInput.value || !visitDateInput.value) {
+                this.blur();
+                if (!birthDateInput.value) {
+                    showFieldError(birthDateInput, 'Сначала выберите дату рождения');
+                }
+                if (!visitDateInput.value) {
+                    showFieldError(visitDateInput, 'Сначала выберите дату посещения');
+                }
+                showFieldError(this, 'Выберите даты для определения доступных типов билетов');
+            }
+        });
+    }
+
+    // Валидация отзыва
+    const reviewInput = document.getElementById('review');
+    if (reviewInput) {
         reviewInput.addEventListener('input', function() {
-            const left = 100 - this.value.length;
-            reviewCounter.textContent = left;
-
             const value = this.value.trim();
+            const left = 100 - this.value.length;
+            document.getElementById('reviewCharsLeft').textContent = left;
+
             if (value && value.length < 5) {
                 showFieldError(this, 'Отзыв слишком короткий (минимум 5 символов)');
             } else if (value && /^[!@#$%^&*()_+=\-\s]+$/.test(value)) {
@@ -155,6 +340,65 @@
                 clearFieldError(this);
             }
         });
-    });
+    }
+
+    // Валидация формы перед отправкой
+    const form = document.getElementById('visitorForm');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            let isValid = true;
+
+            // Проверяем ФИО
+            if (fioInput) {
+                validateFIO(fioInput);
+                if (fioInput.classList.contains('error')) {
+                    isValid = false;
+                }
+            }
+
+            // Проверяем даты
+            if (birthDateInput && !birthDateInput.value) {
+                showFieldError(birthDateInput, 'Выберите дату рождения');
+                isValid = false;
+            }
+
+            if (visitDateInput && !visitDateInput.value) {
+                showFieldError(visitDateInput, 'Выберите дату посещения');
+                isValid = false;
+            }
+
+            // Проверяем возраст еще раз
+            if (birthDateInput && birthDateInput.value && visitDateInput && visitDateInput.value) {
+                const ageAtVisit = calculateAge(birthDateInput.value, visitDateInput.value);
+                if (ageAtVisit < 6) {
+                    showFieldError(birthDateInput, 'Посетитель слишком молод');
+                    isValid = false;
+                }
+            }
+
+            // Проверяем гражданство
+            const citizenshipSelect = document.getElementById('citizenship');
+            if (citizenshipSelect && !citizenshipSelect.value) {
+                showFieldError(citizenshipSelect, 'Выберите гражданство');
+                isValid = false;
+            } else if (citizenshipSelect) {
+                clearFieldError(citizenshipSelect);
+            }
+
+            // Проверяем тип билета
+            if (ticketTypeSelect && !ticketTypeSelect.value) {
+                showFieldError(ticketTypeSelect, 'Выберите тип билета');
+                isValid = false;
+            } else if (ticketTypeSelect) {
+                clearFieldError(ticketTypeSelect);
+            }
+
+            if (!isValid) {
+                e.preventDefault();
+                alert('Пожалуйста, исправьте ошибки в форме');
+            }
+        });
+    }
+});
 </script>
 {% endblock %}

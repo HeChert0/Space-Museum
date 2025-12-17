@@ -1,4 +1,3 @@
-<!-- core/templates/core/mission_form_add.html -->
 {% extends 'core/base.html' %}
 {% load static %}
 {% load custom_filters %}
@@ -50,19 +49,24 @@
 
     <div class="form-group">
         <label for="start_date">Дата начала: <span class="required">*</span></label>
-        <input type="text" name="start_date" id="start_date" required
-               value="{{ fields_data.form_data.start_date|default:'' }}"
-               {% if fields_data.error_field == 'start_date' %}class="error-field date-input"{% else %}class="date-input"{% endif %}
-               placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="start_date" id="start_date" required
+               min="1957-10-04" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="start_date_error"></div>
+        <small id="start_date_hint">Первая миссия: Спутник-1 (4 октября 1957)</small>
     </div>
 
     <div class="form-group">
         <label for="end_date">Дата окончания:</label>
-        <input type="text" name="end_date" id="end_date"
-               value="{{ fields_data.form_data.end_date|default:'' }}"
-               {% if fields_data.error_field == 'end_date' %}class="error-field date-input"{% else %}class="date-input"{% endif %}
-               placeholder="ДД.ММ.ГГГГ или оставьте пустым" maxlength="10">
+        <input type="date" name="end_date" id="end_date"
+               min="1957-10-04" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)"
+               disabled>
+        <div class="field-error" id="end_date_error"></div>
         <small>Можно оставить пустым для текущих миссий</small>
+        <small id="mission_duration" style="display: none;">Продолжительность: <span id="duration_text"></span></small>
     </div>
 
     <div class="form-group">
@@ -97,11 +101,15 @@
         grid-template-columns: repeat(3, 1fr);
         gap: 10px;
         margin-top: 10px;
+        padding: 10px;
+        border: 1px solid #00ff00;
+        background: rgba(0, 255, 0, 0.05);
     }
     .checkbox-label {
         display: flex;
         align-items: center;
         gap: 5px;
+        cursor: pointer;
     }
     .crew-member-row {
         display: flex;
@@ -116,71 +124,287 @@
         box-shadow: 0 0 10px rgba(255, 0, 0, 0.5) !important;
     }
     .required { color: #ff0000; }
-    small { display: block; margin-top: 5px; font-size: 12px; color: #00ff00; opacity: 0.8; }
+    small {
+        display: block;
+        margin-top: 5px;
+        font-size: 12px;
+        color: #00ff00;
+        opacity: 0.8;
+    }
+
+    .date-calendar {
+        cursor: pointer;
+        background: #1a1a1a;
+        color: #00ff00;
+        border: 1px solid #00ff00;
+        padding: 10px;
+        font-family: 'Courier New', monospace;
+        width: 100%;
+        position: relative;
+    }
+
+    .date-calendar::-webkit-calendar-picker-indicator {
+        filter: invert(1);
+        cursor: pointer;
+        position: absolute;
+        right: 10px;
+        width: 20px;
+        height: 20px;
+    }
+
+    .date-calendar:hover {
+        box-shadow: 0 0 10px rgba(0, 255, 0, 0.5);
+    }
+
+    .date-calendar[readonly] {
+        cursor: pointer;
+        background: #1a1a1a;
+    }
+
+    .date-calendar:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .date-calendar {
+        caret-color: transparent;
+    }
+
+    .field-error {
+        color: #ff0000;
+        font-size: 12px;
+        margin-top: 5px;
+        display: none;
+    }
+
+    .field-error.show {
+        display: block;
+    }
+
+    input.error, textarea.error {
+        border-color: #ff0000 !important;
+        box-shadow: 0 0 5px rgba(255, 0, 0, 0.5);
+    }
+
+    input.valid, textarea.valid {
+        border-color: #00ff00 !important;
+    }
+
+    .btn-remove-crew {
+        background: #001100;
+        border: 1px solid #ff0000;
+        color: #ff0000;
+        padding: 5px 10px;
+        cursor: pointer;
+    }
+
+    .btn-add-crew {
+        background: #001100;
+        border: 1px solid #00ff00;
+        color: #00ff00;
+        padding: 8px 15px;
+        cursor: pointer;
+        margin-top: 10px;
+    }
 </style>
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // Функции для показа/скрытия ошибок
+    function showFieldError(input, message) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        input.classList.add('error');
+        input.classList.remove('valid');
+    }
+
+    function clearFieldError(input) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        }
+        input.classList.remove('error');
+        input.classList.add('valid');
+    }
+
+    // Функция для расчета продолжительности миссии
+    function calculateMissionDuration(startDate, endDate) {
+        const start = new Date(startDate);
+        const end = new Date(endDate);
+        const diffTime = Math.abs(end - start);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 30) {
+            return `${diffDays} дней`;
+        } else if (diffDays < 365) {
+            const months = Math.floor(diffDays / 30);
+            return `${months} месяцев`;
+        } else {
+            const years = Math.floor(diffDays / 365);
+            return `${years} лет`;
+        }
+    }
+
     document.addEventListener('DOMContentLoaded', function() {
+        // Устанавливаем максимальную дату (сегодня)
+        const today = new Date().toISOString().split('T')[0];
+
         // Валидация названия миссии
         const titleInput = document.getElementById('title');
         restrictMissionTitleInput(titleInput);
 
-        // Валидация дат
+        // Настройка календарей
         const startDateInput = document.getElementById('start_date');
         const endDateInput = document.getElementById('end_date');
+        const missionDuration = document.getElementById('mission_duration');
+        const durationText = document.getElementById('duration_text');
 
-        // Форматирование даты начала
-        startDateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
+        if (startDateInput) {
+            startDateInput.max = today;
 
-        startDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
-            }
-        });
-
-        startDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
-                e.preventDefault();
-                return false;
-            }
-        });
-
-        // Форматирование даты окончания
-        endDateInput.addEventListener('input', function() {
-            formatDateInput(this);
-        });
-
-        endDateInput.addEventListener('blur', function() {
-            if (this.value.length === 10) {
-                validateDate(this);
-
-                // Проверка, что дата окончания не раньше даты начала
-                const startValue = startDateInput.value;
-                if (startValue && this.value) {
-                    const [sDay, sMonth, sYear] = startValue.split('.');
-                    const [eDay, eMonth, eYear] = this.value.split('.');
-
-                    const startDate = new Date(sYear, sMonth - 1, sDay);
-                    const endDate = new Date(eYear, eMonth - 1, eDay);
-
-                    if (endDate < startDate) {
-                        showFieldError(this, 'Дата окончания не может быть раньше даты начала');
-                    }
+            // Блокируем ввод с клавиатуры
+            startDateInput.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') {
+                    e.preventDefault();
                 }
-            }
-        });
+            });
 
-        endDateInput.addEventListener('keypress', function(e) {
-            const char = String.fromCharCode(e.which || e.keyCode);
-            if (!/\d/.test(char)) {
+            startDateInput.addEventListener('paste', function(e) {
                 e.preventDefault();
-                return false;
-            }
-        });
+            });
+
+            // При изменении даты начала
+            startDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    showFieldError(this, 'Выберите дату начала миссии');
+                    endDateInput.disabled = true;
+                    endDateInput.value = '';
+                    missionDuration.style.display = 'none';
+                    return;
+                }
+
+                const selectedDate = new Date(this.value);
+                const minDate = new Date('1957-10-04');
+                const maxDate = new Date();
+
+                if (selectedDate < minDate) {
+                    showFieldError(this, 'Первая космическая миссия - Спутник-1 (4 октября 1957)');
+                    this.value = '';
+                    endDateInput.disabled = true;
+                    return;
+                }
+
+                if (selectedDate > maxDate) {
+                    showFieldError(this, 'Дата начала не может быть в будущем');
+                    this.value = '';
+                    endDateInput.disabled = true;
+                    return;
+                }
+
+                clearFieldError(this);
+
+                // Активируем поле даты окончания
+                endDateInput.disabled = false;
+                endDateInput.min = this.value;
+
+                // Обновляем подсказку
+                const year = selectedDate.getFullYear();
+                let era = '';
+                if (year >= 1957 && year < 1961) {
+                    era = 'Эра первых спутников';
+                } else if (year >= 1961 && year < 1970) {
+                    era = 'Первые полеты человека';
+                } else if (year >= 1970 && year < 1980) {
+                    era = 'Эра космических станций';
+                } else if (year >= 1980 && year < 1990) {
+                    era = 'Развитие шаттлов';
+                } else if (year >= 1990 && year < 2000) {
+                    era = 'Международное сотрудничество';
+                } else if (year >= 2000) {
+                    era = 'Современная космонавтика';
+                }
+
+                if (era) {
+                    document.getElementById('start_date_hint').textContent = era;
+                }
+
+                // Пересчитываем продолжительность если дата окончания уже выбрана
+                if (endDateInput.value) {
+                    const duration = calculateMissionDuration(this.value, endDateInput.value);
+                    durationText.textContent = duration;
+                    missionDuration.style.display = 'block';
+                }
+            });
+        }
+
+        if (endDateInput) {
+            endDateInput.max = today;
+
+            // Блокируем ввод с клавиатуры
+            endDateInput.addEventListener('keydown', function(e) {
+                if (e.key !== 'Tab') {
+                    e.preventDefault();
+                }
+            });
+
+            endDateInput.addEventListener('paste', function(e) {
+                e.preventDefault();
+            });
+
+            // Блокируем выбор до даты начала
+            endDateInput.addEventListener('focus', function() {
+                if (!startDateInput.value) {
+                    this.blur();
+                    showFieldError(startDateInput, 'Сначала выберите дату начала');
+                    showFieldError(this, 'Выберите дату начала миссии');
+                }
+            });
+
+            // При изменении даты окончания
+            endDateInput.addEventListener('change', function() {
+                if (!this.value) {
+                    // Можно оставить пустым
+                    clearFieldError(this);
+                    missionDuration.style.display = 'none';
+                    return;
+                }
+
+                if (!startDateInput.value) {
+                    showFieldError(this, 'Сначала выберите дату начала');
+                    this.value = '';
+                    return;
+                }
+
+                const startDate = new Date(startDateInput.value);
+                const endDate = new Date(this.value);
+                const maxDate = new Date();
+
+                if (endDate < startDate) {
+                    showFieldError(this, 'Дата окончания не может быть раньше даты начала');
+                    this.value = '';
+                    missionDuration.style.display = 'none';
+                    return;
+                }
+
+                if (endDate > maxDate) {
+                    showFieldError(this, 'Дата окончания не может быть в будущем');
+                    this.value = '';
+                    missionDuration.style.display = 'none';
+                    return;
+                }
+
+                clearFieldError(this);
+
+                // Показываем продолжительность
+                const duration = calculateMissionDuration(startDateInput.value, this.value);
+                durationText.textContent = duration;
+                missionDuration.style.display = 'block';
+            });
+        }
 
         // Валидация цели
         const goalField = document.getElementById('goal');
@@ -217,7 +441,7 @@
                 } else if (checked === 0) {
                     document.querySelector('.checkbox-group').style.borderColor = '#ff0000';
                 } else {
-                    document.querySelector('.checkbox-group').style.borderColor = 'transparent';
+                    document.querySelector('.checkbox-group').style.borderColor = '#00ff00';
                 }
             });
         });

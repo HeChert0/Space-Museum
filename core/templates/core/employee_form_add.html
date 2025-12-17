@@ -60,11 +60,13 @@
 
     <div class="form-group">
         <label for="hire_date">Дата найма: <span class="required">*</span></label>
-        <input type="text" name="hire_date" id="hire_date" required
-               value="{{ fields_data.form_data.hire_date|default:'' }}"
-               {% if fields_data.error_field == 'hire_date' %}class="error-field date-input"{% else %}class="date-input"{% endif %}
-               placeholder="ДД.ММ.ГГГГ" maxlength="10">
+        <input type="date" name="hire_date" id="hire_date" required
+               min="2002-01-01" max="" class="date-calendar"
+               readonly onfocus="this.removeAttribute('readonly')"
+               onblur="this.setAttribute('readonly', true)">
+        <div class="field-error" id="hire_date_error"></div>
     </div>
+
 
     <div class="form-group">
         <label>Телефон: <span class="required">*</span></label>
@@ -110,24 +112,50 @@
 
 <script src="{% static 'core/js/validation.js' %}"></script>
 <script>
+    // Функции для показа/скрытия ошибок
+    function showFieldError(input, message) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = message;
+            errorDiv.classList.add('show');
+        }
+        input.classList.add('error');
+        input.classList.remove('valid');
+    }
+
+    function clearFieldError(input) {
+        const errorDiv = document.getElementById(input.id + '_error');
+        if (errorDiv) {
+            errorDiv.textContent = '';
+            errorDiv.classList.remove('show');
+        }
+        input.classList.remove('error');
+        input.classList.add('valid');
+    }
+
+    // Устанавливаем максимальную дату (сегодня)
+    const today = new Date().toISOString().split('T')[0];
+
     // *** ДИНАМИЧЕСКАЯ ВАЛИДАЦИЯ ФИО *** //
     const fioInput = document.getElementById('full_name');
-    restrictFIOInput(fioInput); // Используем функцию из validation.js
+    restrictFIOInput(fioInput);
 
     // *** ВАЛИДАЦИЯ КВАЛИФИКАЦИИ С ДЕФИСОМ *** //
-    document.getElementById('qualification').addEventListener('keypress', function(e) {
+    const qualificationInput = document.getElementById('qualification');
+
+    qualificationInput.addEventListener('keypress', function(e) {
         const char = String.fromCharCode(e.which || e.keyCode);
-        const pattern = /[а-яА-ЯёЁa-zA-Z\-\s]/; // Добавлен дефис
+        const pattern = /[а-яА-ЯёЁa-zA-Z\-\s]/;
         if (!pattern.test(char)) {
             e.preventDefault();
             return false;
         }
     });
 
-    document.getElementById('qualification').addEventListener('paste', function(e) {
+    qualificationInput.addEventListener('paste', function(e) {
         e.preventDefault();
         const text = (e.clipboardData || window.clipboardData).getData('text');
-        const cleanedText = text.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, ''); // Добавлен дефис
+        const cleanedText = text.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, '');
 
         const start = this.selectionStart;
         const end = this.selectionEnd;
@@ -137,10 +165,9 @@
         this.setSelectionRange(start + cleanedText.length, start + cleanedText.length);
     });
 
-    document.getElementById('qualification').addEventListener('input', function() {
-        this.value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, ''); // Добавлен дефис
+    qualificationInput.addEventListener('input', function() {
+        this.value = this.value.replace(/[^а-яА-ЯёЁa-zA-Z\-\s]/g, '');
 
-        // Проверка на двойные дефисы
         if (this.value.includes('--')) {
             this.value = this.value.replace(/--+/g, '-');
             showFieldError(this, 'Недопустимы двойные дефисы');
@@ -149,29 +176,48 @@
         }
     });
 
-    // *** ВАЛИДАЦИЯ И ФОРМАТИРОВАНИЕ ДАТЫ НАЙМА *** //
+    // *** НАСТРОЙКА КАЛЕНДАРЯ ДЛЯ ДАТЫ НАЙМА *** //
     const hireDateInput = document.getElementById('hire_date');
 
-    hireDateInput.addEventListener('input', function() {
-        formatDateInput(this);
-    });
+    if (hireDateInput) {
+        hireDateInput.max = today;
 
-    hireDateInput.addEventListener('blur', function() {
-        if (this.value.length === 10) {
-            validateDate(this);
-        }
-    });
+        // Блокируем ввод с клавиатуры
+        hireDateInput.addEventListener('keydown', function(e) {
+            if (e.key !== 'Tab') {
+                e.preventDefault();
+            }
+        });
 
-    hireDateInput.addEventListener('keypress', function(e) {
-        const char = String.fromCharCode(e.which || e.keyCode);
-        // Разрешаем только цифры
-        if (!/\d/.test(char)) {
+        // Блокируем вставку
+        hireDateInput.addEventListener('paste', function(e) {
             e.preventDefault();
-            return false;
-        }
-    });
+        });
 
-    // Остальной код без изменений...
+        // Валидация при изменении даты через календарь
+        hireDateInput.addEventListener('change', function() {
+            if (!this.value) {
+                showFieldError(this, 'Выберите дату найма');
+                return;
+            }
+
+            const selectedDate = new Date(this.value);
+            const minDate = new Date('2002-01-01');
+            const maxDate = new Date();
+
+            if (selectedDate < minDate) {
+                showFieldError(this, 'Музей открыт с 2002 года');
+                this.value = '';
+            } else if (selectedDate > maxDate) {
+                showFieldError(this, 'Дата не может быть в будущем');
+                this.value = '';
+            } else {
+                clearFieldError(this);
+            }
+        });
+    }
+
+    // Позиции по отделам
     const positionsByDepartment = {{ fields_data.positions_by_department|safe }};
 
     function updatePositions(departmentValue, selectedPosition) {
